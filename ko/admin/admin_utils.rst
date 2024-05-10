@@ -43,6 +43,7 @@ cubrid 유틸리티의 사용법(구문)은 다음과 같다. ::
         tde <operation> [option] <database_name> --- TDE 암호화 관리 도구
         vacuumdb [option] <database-name>  --- 데이터베이스의 삭제된 레코드 또는 불필요한 mvcc 관련 정보를 정리 및 관련 정보 확인하는 도구
         flashback [option] <database-name> <owner_name.class_name> --- 커밋된 특정 트랜잭션을 되돌릴 수 있도록 SQL 구문을 제공하는 도구
+        memmon [option] <database-name> --- 서버의 힙 메모리 사용량에 대한 모니터링 정보를 확인하는 도구
 
 cubrid 유틸리티 로깅
 --------------------
@@ -3663,6 +3664,53 @@ flashback
     지정된 트랜잭션 내에서 수행된 SQL 구문들을 시간 순서로 표시한다. **\-\-oldest** 옵션을 지정하지 않으면, 트랜잭션 내에서 수행된 SQL 구문들을 시간 역순으로 표시한다. ::
 
         cubrid flashback --oldest demodb dba.tbl
+
+.. _memmon:
+
+memmon
+---------
+
+**cubrid memmon** 유틸리티는 서버 프로세스의 힙 메모리 사용량에 대한 모니터링 현황을 출력한다. **cubrid memmon** 을 수행하기 위해서는 현황 출력의 대상이 되는 서버 프로세스의 시스템 파라미터 **enable_memory_monitoring** 을 반드시 yes로 설정해야 한다. ::
+    cubrid memmon [option] database_name
+
+*   **cubrid**: CUBRID 서비스 및 데이터베이스 관리를 위한 통합 유틸리티
+
+*   **memmon**: 서버의 힙 메모리 사용량에 대한 모니터링 현황을 출력하는 도구
+
+*   *database_name*: 현황을 출력하고자 하는 서버 프로세스가 운영중인 데이터베이스 이름
+
+다음 예제에서는 사용자가 "cubrid memmon demodb"를 수행했을 때 출력되는 결과를 보여준다.
+
+::
+
+    ====================cubrid memmon====================
+    Server Name: demodb
+    Total Memory Usage: 935240 KB (for meta info: 470 KB)
+    -----------------------------------------------------
+            File Name                                                                                           |     Memory Usage(Ratio)
+            storage/page_buffer.c:4977                                                                          |           525315 KB( 56%)
+            transaction/log_page_buffer.c:584                                                                   |           262147 KB( 28%)
+            ...
+
+위의 예에서 **cubrid memmon** 을 실행하면 서버 프로세스가 운영중인 데이터베이스 이름, 서버 프로세스가 사용 중인 힙 메모리의 총량, 모니터링을 위한 힙 메모리 할당의 메타 정보를 저장하기 위해 사용 중인 힙 메모리의 양, 할당이 발생한 모든 파일:라인 정보 및 현재 메모리 사용량, 그리고 서버 프로세스의 전체 힙 메모리 사용량 대비 점유율을 표시한다.
+
+**cubrid memmon** 에 표시된 각 칼럼의 의미는 다음과 같다.
+
+    *   File Name : 할당이 발생한 파일 위치 및 라인 정보
+    *   Memory Usage(Ratio) : 힙 메모리 사용량 (서버 프로세스의 전체 힙 메모리 사용량 대비 점유율)
+
+.. note::
+		할당 지점 정보를 남기기 위해 어떤 할당 지점에서 발생한 모든 힙 메모리 할당이 해제가 완료되어 해당하는 지점의 현재 메모리 사용량이 0이 되더라도 **cubrid memmon** 의 출력 대상이 된다.
+
+다음은 **cubrid memmon** 에서 사용하는 [option]이다.
+
+.. program:: memmon
+
+.. option:: -o, --output-file=FILE
+
+    힙 메모리 사용량의 모니터링 현황을 지정된 파일에 저장하는 옵션이다. **-o** 옵션을 지정하지 않으면 콘솔 화면에 메시지가 표시된다. ::
+
+        cubrid memmon -o memory_usage_output demodb
 
 
 HA 명령어
