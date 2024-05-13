@@ -3693,6 +3693,7 @@ memmon
 ---------
 
 The **cubrid memmon** utility prints the monitoring result of heap memory usage in the server process. To execute **cubrid memmon**, the system parameter **enable_memory_monitoring** of the target process must be set. ::
+
     cubrid memmon [option] database_name
 
 *   **cubrid**: Integrated utility for CUBRID service and database management.
