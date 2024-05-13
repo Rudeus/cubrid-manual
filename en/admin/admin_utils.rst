@@ -3722,7 +3722,7 @@ The meaning of each column displayed by **cubrid memmon** is as follows.
     *   Memory Usage(Ratio) : Heap memory usage (Ratio compared to the total heap memory usage of the server process)
 
 .. note::
-                **cubrid memmon** includes all allocations occurred at any given point in time for tracking purposes, even if the current memory usage at that point becomes 0 dut to the deallocation of all heap memory allocations made at that point.
+                **cubrid memmon** includes all allocations occurred at any given point in time for tracking purposes, even if the current memory usage at that point becomes 0 due to the deallocation of all heap memory allocations made at that point.
 
 The following are the [option] used by **cubrid memmon** .
 
