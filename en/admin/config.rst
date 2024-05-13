@@ -391,6 +391,8 @@ On the below table, if "Applied" is "server parameter", that parameter affects t
 |                               | deduplicate_key_level               | client/server parameter |         | int      | -1                             |                       |
 |                               +-------------------------------------+-------------------------+---------+----------+--------------------------------+-----------------------+
 |                               | print_index_detail                  | client/server parameter |         | bool     | no                             |                       |
+|                               +-------------------------------------+-------------------------+---------+----------+--------------------------------+-----------------------+
+|                               | enable_memory_monitoring            | server parameter        |         | bool     | no                             |                       |
 +-------------------------------+-------------------------------------+-------------------------+---------+----------+--------------------------------+-----------------------+
 
 .. _lpg:
@@ -2191,6 +2193,8 @@ The following are other parameters. The type and value range for each parameter 
 +-------------------------------------+--------+----------------+----------------+----------------+
 | print_index_detail                  | bool   | no             |                |                |
 +-------------------------------------+--------+----------------+----------------+----------------+
+| enable_memory_monitoring            | bool   | no             |                |                |
++-------------------------------------+--------+----------------+----------------+----------------+
 
 **access_ip_control**
 
@@ -2403,6 +2407,10 @@ The following are other parameters. The type and value range for each parameter 
 **print_index_detail**
 
  It specifies whether option information in the **WITH** clause is displayed when index syntax information is displayed, such as in the SHOW CREATE TABLE statement. Default is NO. However, the unloaddb tool is not affected by this setting.
+
+**enable_memory_monitoring**
+
+ **enable_memory_monitoring** specifies whether heap memory usage monitoring on the server is enabled. The default value is NO. The result of heap memory usage monitoring can be viewed in :ref:`memmon` utility.
 
 
 .. _broker-configuration:
