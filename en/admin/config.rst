@@ -2410,7 +2410,15 @@ The following are other parameters. The type and value range for each parameter 
 
 **enable_memory_monitoring**
 
- **enable_memory_monitoring** specifies whether heap memory usage monitoring on the server is enabled. The default value is NO. The result of heap memory usage monitoring can be viewed in :ref:`memmon` utility.
+ **enable_memory_monitoring** specifies whether to monitor the server's heap memory usage. Setting the value to YES activates the server's memory monitoring feature, which continuously tracks and manages the server's heap memory usage. Heap memory usage is tracked based on the file and line where dynamic memory allocation occurs in the CUBRID source code. If multiple memory allocations occur at the same location, the memory usage is accumulated. When the tracked memory is deallocated, the amount of deallocated memory is subtracted from the accumulated total, continuously tracking the real-time heap memory usage. The monitored heap memory usage can be checked using :ref:`memmon` utility. The default value is NO.
+
+.. note::
+    *   It is not supported in the Windows environment.
+    *   During the automation process of tracking memory usage, due to conflicts with glibc, memory usage within glibc(STL containers) is not tracked, and for the same reason, memory usage occurring in header files is not tracked.
+    *   In an HA environment configuration, the memory allocation is high when processing the master node's log on the slave node. Therefore, the cost of monitgoring memory usage is high, which can lead to performance issues, so **enable_memory_monitoring** is excluded from the support target.
+    *   The memory usage indicated by **enable_memory_monitoring** may differ from the memory usage displayed in pmap -d and htop. This difference arises not only because CUBRID's memory monitoring does not track memory allocations occurring within header files and glibc but also due to the following reasons
+        *   While pmap -d can check the heap memory usage of a process in the writeable/private section, this can differ because it shows the memory occupancy of a process according to the OS memory management policy.
+        *   htop provides the memory usage of a process through the RES(Resident Set Size) section. However, since this shows the physical memory usage of a process, it cannot be used to check only the heap memory usage of a process.
 
 
 .. _broker-configuration:
