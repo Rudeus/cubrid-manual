@@ -43,7 +43,7 @@ The following shows how to use the cubrid management utilities. ::
         tde <operation> [option] <database-name> --- Managing Transparent Data Encryption (TDE)
         vacuumdb [option] <database-name>  --- Vacuuming deleted records or unnecessary mvcc related information from records in the database
         flashback [option] <database-name> <owner_name.class_name> --- Provides statements to rewind a specific transaction.
-        memmon [option] <database-name> --- Provides information of monitoring heap memory usage on the server.
+        memmon [option] <database-name> --- Provides information of current heap memory usage on the server.
 
 cubrid Utility Logging
 ----------------------
@@ -3692,15 +3692,15 @@ The following shows [options] available with the **cubrid flashback** utility.
 memmon
 ---------
 
-The **cubrid memmon** utility prints the monitoring result of heap memory usage in the server process. To execute **cubrid memmon**, the system parameter **enable_memory_monitoring** of the target process must be set. ::
+The **cubrid memmon** utility prints information about the heap memory usage currently allocated to the server process. When the system parameter **enable_memory_monitoring** is set to *yes*, the server memory monitoring module tracks and manages total usage of heap memory and detailed memory allocation information based on the CUBRID source code and line information where memory allocation occurs. This allows users to check the current state of the server's heap memory usage at the time the utility is executed. ::
 
     cubrid memmon [option] database_name
 
 *   **cubrid**: Integrated utility for CUBRID service and database management.
 
-*   **memmon**: A utility that provides information of monitoring heap memory usage on the server process.
+*   **memmon**: A utility that provides information of heap memory usage on the server process.
 
-*   *database_name*: Name of database being operated by the server procee for which the monitoring result is to be displayed.
+*   *database_name*: The name of the database to check the heap memory usage status.
 
 The following example shows the result of executing "cubrid memmon demodb".
 
@@ -3715,12 +3715,19 @@ The following example shows the result of executing "cubrid memmon demodb".
             transaction/log_page_buffer.c:584                                                                   |           262147 KB( 28%)
             ...
 
-When **cubrid memmon** is executed, it displays the following information: the name of the database being operated by the server process, the total amount of heap memory in use by the server process, the amount of heap memory used for storing meta information for monitoring, details of all allocations including file name and line number, current memory usage, and the ratio of memory usage compared to the total heap memory usage of the server process.
+When **cubrid memmon** is executed, it displays the following information: the name of the database server, the total amount of heap memory in use, the amount of heap memory used for storing meta information for tracking and managing allocated heap memory, and the detailed items including the memory usage and usage ratio at each file:line where heap memory allocation occurred, sorted by usage.
 
-The meaning of each column displayed by **cubrid memmon** is as follows.
+The information output by the **cubrid memmon** utility has the following meanings.
 
-    *   File Name : Location and line number where the allocation occurred
-    *   Memory Usage(Ratio) : Heap memory usage (Ratio compared to the total heap memory usage of the server process)
+    *   Server name : The name of database
+
+    *   Total Memory Usage : Total amount of heap memory in use
+
+        *   for meta info : The amount of heap memory used for storing meta information
+
+    *   File Name : Name of the CUBRID source code file and line number where the heap memory allocation occurred
+
+    *   Memory Usage(Ratio) : Heap memory usage (Ratio compared to the total heap memory usage)
 
 .. note::
                 **cubrid memmon** includes all allocations occurred at any given point in time for tracking purposes, even if the current memory usage at that point becomes 0 due to the deallocation of all heap memory allocations made at that point.
@@ -3731,7 +3738,7 @@ The following are the [option] used by **cubrid memmon** .
 
 .. option:: -o, --output-file=FILE
 
-    Option to save the monitoring result of heap memory usage to the specified file. If the **-o** option is not specified, messages will be displayed on a console screen. ::
+    Option to save the result of the utility execution to a specified file. If the **-o** option is not specified, messages will be displayed on a console screen. ::
 
         cubrid memmon -o memory_usage_output demodb
 
