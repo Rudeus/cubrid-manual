@@ -3697,7 +3697,7 @@ memmon
 
 **cubrid memmon** 에 표시된 각 칼럼의 의미는 다음과 같다.
 
-    *   File Name : 할당이 발생한 파일 위치 및 라인 정보
+    *   File Name : 힙 메모리 할당이 발생한 큐브리드 소스 코드 파일명과 라인 정보
     *   Memory Usage(Ratio) : 힙 메모리 사용량 (서버 프로세스의 전체 힙 메모리 사용량 대비 점유율)
 
 .. note::
