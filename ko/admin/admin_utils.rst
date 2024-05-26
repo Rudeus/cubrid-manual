@@ -3670,7 +3670,7 @@ flashback
 memmon
 ---------
 
- **cubrid memmon** 유틸리티는 서버 프로세스의 힙 메모리 사용량에 대한 모니터링 현황을 출력한다. **cubrid memmon** 을 수행하기 위해서는 현황 출력의 대상이 되는 서버 프로세스의 시스템 파라미터 **enable_memory_monitoring** 을 반드시 yes로 설정해야 한다. ::
+ **cubrid memmon** 유틸리티는 현재 서버 프로세스에 할당된 힙 메모리 사용량에 대한 정보를 출력한다. 시스템 파라미터 **enable_memory_monitoring** 가 yes로 설정된 경우 서버 메모리 모니터링 모듈은 힙 메모리 총 사용량과 메모리 할당이 발생한 큐브리드 소스 코드 및 라인 정보를 기준으로 세부적인 메모리 할당 정보를 추적 관리한다. 이를 통해 유틸리티를 수행하는 시점의 서버 힙 메모리 사용 현황에 대해 확인할 수 있다. ::
 
     cubrid memmon [option] database_name
 
