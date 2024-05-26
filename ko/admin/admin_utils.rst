@@ -43,7 +43,7 @@ cubrid 유틸리티의 사용법(구문)은 다음과 같다. ::
         tde <operation> [option] <database_name> --- TDE 암호화 관리 도구
         vacuumdb [option] <database-name>  --- 데이터베이스의 삭제된 레코드 또는 불필요한 mvcc 관련 정보를 정리 및 관련 정보 확인하는 도구
         flashback [option] <database-name> <owner_name.class_name> --- 커밋된 특정 트랜잭션을 되돌릴 수 있도록 SQL 구문을 제공하는 도구
-        memmon [option] <database-name> --- 서버의 힙 메모리 사용량에 대한 모니터링 정보를 확인하는 도구
+        memmon [option] <database-name> --- 현재 서버의 힙 메모리 사용량에 대한 정보를 확인하는 도구
 
 cubrid 유틸리티 로깅
 --------------------
