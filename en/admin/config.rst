@@ -2416,7 +2416,7 @@ The following are other parameters. The type and value range for each parameter 
 
     *   It is not supported in the Windows environment.
     *   During the automation process of tracking memory usage, due to conflicts with glibc, memory usage within glibc(STL containers) is not tracked, and for the same reason, memory usage occurring in header files is not tracked.
-    *   In an HA environment configuration, the memory allocation is high when processing the master node's log on the slave node. Therefore, the cost of monitgoring memory usage is high, which can lead to performance issues, so **enable_memory_monitoring** is excluded from the support target.
+    *   In an HA environment configuration, the memory allocation is high when processing the master node's log on the slave node. Therefore, the cost of monitoring memory usage is high, which can lead to performance issues, it is not recommended to use **enable_memory_monitoring** on the slave node.
 
 .. note::
 

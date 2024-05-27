@@ -3715,7 +3715,7 @@ The following example shows the result of executing "cubrid memmon demodb".
             transaction/log_page_buffer.c:584                                                                   |           262147 KB( 28%)
             ...
 
-When **cubrid memmon** is executed, it displays the following information: the name of the database server, the total amount of heap memory in use, the amount of heap memory used for storing meta information for tracking and managing allocated heap memory, and the detailed items including the memory usage and usage ratio at each file:line where heap memory allocation occurred, sorted by usage.
+When **cubrid memmon** is executed, it displays the following information: the name of the database server, the total amount of heap memory in use, the amount of heap memory used for storing meta information for tracking and managing allocated heap memory, and the detailed items including the memory usage and usage ratio at each file:line where heap memory allocation occurred, sorted by usage. If the --disable-force option is used to forcibly stop the memory monitoring feature, nothing will be output.
 
 The information output by the **cubrid memmon** utility has the following meanings.
 
@@ -3741,6 +3741,12 @@ The following are the [option] used by **cubrid memmon** .
     Option to save the result of the utility execution to a specified file. If the **-o** option is not specified, messages will be displayed on a console screen. ::
 
         cubrid memmon -o memory_usage_output demodb
+
+.. option:: --disable-force
+
+    Option to forcibly stop the memory monitoring feature. If the memory monitoring feature is forcibly stopped using this option, nothing will be output when displaying the server's heap memory usage using **cubrid memmon**. To restart the feature, the server must be restarted. ::
+
+        cubrid memmon --disable-force demodb
 
 
 HA Commands
