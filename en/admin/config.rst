@@ -2416,7 +2416,7 @@ The following are other parameters. The type and value range for each parameter 
 
     *   It is only supported on Linux.
     *   During the automated process of tracking memory usage at the code level using macros, conflicts with glibc occurred. To prevent this, memory usage within glibc(STL containers) is not tracked. And for the same reason, memory usage occurring in header files is not tracked.
-    *   In an HA environment, slave nodes have a high proportion of memory allocation while processing logs from the master node. This increases the cost of memory monitoring, potentially causing performance issues. Therefore, the use of **enable_memory_monitoring** is not recommended on slave nodes.
+    *   In an HA environment, slave nodes have a high proportion of memory allocation while processing logs from the master node. This increases the cost of memory monitoring, potentially causing performance issues. Therefore, it is not recommended to use on slave nodes.
 
 .. note::
 

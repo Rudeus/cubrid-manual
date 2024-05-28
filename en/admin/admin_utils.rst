@@ -3715,7 +3715,7 @@ The following example shows the result of executing "cubrid memmon demodb".
             transaction/log_page_buffer.c:584                                                                   |           262147 KB( 28%)
             ...
 
-When **cubrid memmon** is executed, it displays the following information: the name of the database server, the total amount of heap memory in use, the amount of heap memory used to store meta information for tracking and managing allocated heap memory, and the detailed items including the memory usage and usage ratio at each file and line[file:line] where heap memory allocation occurred, sorted by usage. If the --disable-force option is used to forcibly stop the memory monitoring feature, nothing will be output.
+When **cubrid memmon** is executed, it displays the following information: the name of the database server, the total amount of heap memory in use, the amount of heap memory used to store meta information for tracking and managing allocated heap memory, and the detailed items including the memory usage and usage ratio at each file and line[file:line] where heap memory allocation occurred, sorted by usage. If the --disable-force option is used to forcibly stop the memory monitoring feature, error message will be output.
 
 The information output by the **cubrid memmon** utility has the following meanings.
 
@@ -3730,7 +3730,7 @@ The information output by the **cubrid memmon** utility has the following meanin
     *   Memory Usage(Ratio) : Heap memory usage (Ratio compared to the total heap memory usage)
 
 .. note::
-                **cubrid memmon** includes all allocations occurred at any given point in time for tracking purposes, even if the current memory usage at that point becomes 0 due to the deallocation of all heap memory allocations made at that point.
+               To record the history of heap memory allocations, the point at which heap memory is deallocated and the current memory usage becomes 0 is also included in the output of **cubrid memmon**.
 
 The following are the [option] used by **cubrid memmon** .
 
