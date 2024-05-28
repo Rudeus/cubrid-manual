@@ -2410,19 +2410,19 @@ The following are other parameters. The type and value range for each parameter 
 
 **enable_memory_monitoring**
 
- **enable_memory_monitoring** specifies whether to monitor the server's heap memory usage. Setting the value to YES activates the server's memory monitoring feature, which continuously tracks and manages the server's heap memory usage. Heap memory usage is tracked based on the file and line where dynamic memory allocation occurs in the CUBRID source code. If multiple memory allocations occur at the same location, the memory usage is accumulated. When the tracked memory is deallocated, the amount of deallocated memory is subtracted from the accumulated total, continuously tracking the real-time heap memory usage. The monitored heap memory usage can be checked using :ref:`memmon` utility. The default value is NO.
+ **enable_memory_monitoring** specifies whether to monitor the server's heap memory usage. Setting the value to YES, the server's memory monitoring feature is activated, which continuously tracks and manages the server's heap memory usage. Heap memory usage is tracked based on the file and line where dynamic memory allocation occurs in the CUBRID source code. If multiple memory allocations occur at the same location, the memory usage is accumulated. When the tracked memory is deallocated, the amount of deallocated memory is subtracted from the accumulated total, continuously tracking the real-time heap memory usage. The monitored heap memory usage can be checked using :ref:`memmon` utility. The default value is NO.
 
 .. note::
 
-    *   It is not supported in the Windows environment.
-    *   During the automation process of tracking memory usage, due to conflicts with glibc, memory usage within glibc(STL containers) is not tracked, and for the same reason, memory usage occurring in header files is not tracked.
-    *   In an HA environment configuration, the memory allocation is high when processing the master node's log on the slave node. Therefore, the cost of monitoring memory usage is high, which can lead to performance issues, it is not recommended to use **enable_memory_monitoring** on the slave node.
+    *   It is only supported on Linux.
+    *   During the automated process of tracking memory usage at the code level using macros, conflicts with glibc occurred. To prevent this, memory usage within glibc(STL containers) is not tracked. And for the same reason, memory usage occurring in header files is not tracked.
+    *   In an HA environment, slave nodes have a high proportion of memory allocation while processing logs from the master node. This increases the cost of memory monitoring, potentially causing performance issues. Therefore, the use of **enable_memory_monitoring** is not recommended on slave nodes.
 
 .. note::
 
-    * The memory usage indicated by **enable_memory_monitoring** may differ from the memory usage displayed in pmap -d and htop. This difference arises not only because CUBRID's memory monitoring does not track memory allocations occurring within header files and glibc but also due to the following reasons
+    * The memory usage tracked by CUBRID may differ from the memory usage displayed by commands like pmap -d and htop. This is because CUBRID's memory monitoring feature does not track memory allocations occurring within header files and glibc internals. Additionally, there are some additional differences:
 
-        *   While pmap -d can check the heap memory usage of a process in the writeable/private section, this can differ because it shows the memory occupancy of a process according to the OS memory management policy.
+        *   The heap memory usage of a process in pmap -d can be identified through the writeable/private section. However, this metric reflects the memory occupancy of the process based on the memory management policies of the OS. As a result, there may be differences between the memory usage shown by CUBRID's memory monitoring feature and what is displayed in pmap -d.
         *   htop provides the memory usage of a process through the RES(Resident Size) section. However, since this shows the physical memory usage of a process, it cannot be used to check only the heap memory usage of a process.
 
 

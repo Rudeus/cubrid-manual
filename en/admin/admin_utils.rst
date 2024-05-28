@@ -3692,7 +3692,7 @@ The following shows [options] available with the **cubrid flashback** utility.
 memmon
 ---------
 
-The **cubrid memmon** utility prints information about the heap memory usage currently allocated to the server process. When the system parameter **enable_memory_monitoring** is set to *yes*, the server memory monitoring module tracks and manages total usage of heap memory and detailed memory allocation information based on the CUBRID source code and line information where memory allocation occurs. This allows users to check the current state of the server's heap memory usage at the time the utility is executed. ::
+The **cubrid memmon** utility prints the heap memory usage currently allocated to the server process. When the system parameter **enable_memory_monitoring** is set to *yes*, the server memory monitoring module tracks and manages total usage of heap memory and detailed memory allocation information based on the CUBRID source code and line information where memory allocation occurs. This allows users to check the current state of the server's heap memory usage at the time the utility is executed. ::
 
     cubrid memmon [option] database_name
 
@@ -3715,7 +3715,7 @@ The following example shows the result of executing "cubrid memmon demodb".
             transaction/log_page_buffer.c:584                                                                   |           262147 KB( 28%)
             ...
 
-When **cubrid memmon** is executed, it displays the following information: the name of the database server, the total amount of heap memory in use, the amount of heap memory used for storing meta information for tracking and managing allocated heap memory, and the detailed items including the memory usage and usage ratio at each file:line where heap memory allocation occurred, sorted by usage. If the --disable-force option is used to forcibly stop the memory monitoring feature, nothing will be output.
+When **cubrid memmon** is executed, it displays the following information: the name of the database server, the total amount of heap memory in use, the amount of heap memory used to store meta information for tracking and managing allocated heap memory, and the detailed items including the memory usage and usage ratio at each file and line[file:line] where heap memory allocation occurred, sorted by usage. If the --disable-force option is used to forcibly stop the memory monitoring feature, nothing will be output.
 
 The information output by the **cubrid memmon** utility has the following meanings.
 
@@ -3723,7 +3723,7 @@ The information output by the **cubrid memmon** utility has the following meanin
 
     *   Total Memory Usage : Total amount of heap memory in use
 
-        *   for meta info : The amount of heap memory used for storing meta information
+        *   for meta info : The memory usage of the metadata used to track and manage the total heap memory usage.
 
     *   File Name : Name of the CUBRID source code file and line number where the heap memory allocation occurred
 
@@ -3744,7 +3744,7 @@ The following are the [option] used by **cubrid memmon** .
 
 .. option:: --disable-force
 
-    Option to forcibly stop the memory monitoring feature. If the memory monitoring feature is forcibly stopped using this option, nothing will be output when displaying the server's heap memory usage using **cubrid memmon**. To restart the feature, the server must be restarted. ::
+    Option to forcibly disables the memory monitoring feature. If the memory monitoring feature is forcibly disabled, **cubrid memmon** utility will not display the server's heap memory usage. To resume tracking memory usage, the server must be restarted. ::
 
         cubrid memmon --disable-force demodb
 
