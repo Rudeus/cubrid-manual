@@ -3686,11 +3686,11 @@ memmon
 
     ====================cubrid memmon====================
     Server Name: demodb
-    Total Memory Usage: 935240 KB (for meta info: 470 KB)
+    Total Memory Usage: 935240660 Bytes (for meta info: 470300 Bytes)
     -----------------------------------------------------
             File Name                                                                                           |     Memory Usage(Ratio)
-            storage/page_buffer.c:4977                                                                          |           525315 KB( 56%)
-            transaction/log_page_buffer.c:584                                                                   |           262147 KB( 28%)
+            storage/page_buffer.c:4977                                                                          |        525315320 Bytes( 56%)
+            transaction/log_page_buffer.c:584                                                                   |        262147560 Bytes( 28%)
             ...
 
 **cubrid memmon** 유틸리티를 실행하면 데이터베이스 이름, 힙 메모리 총 사용량, 할당된 힙 메모리를 추적 관리하기 위해 서버 내부적으로 유지되는 메타 정보의 메모리 사용량이 출력된다. 세부 항목으로는 힙 메모리 할당이 발생한 모든 파일과 라인 별[파일:라인] 메모리 사용량과 점유율이 사용량 기준으로 정렬되어 출력된다. 만약 --disable-force 옵션을 이용하여 메모리 모니터링 기능을 강제로 중지시킨 경우, 에러 메시지가 출력된다.
