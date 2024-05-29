@@ -2420,7 +2420,7 @@ The following are other parameters. The type and value range for each parameter 
 
 .. note::
 
-    * The memory usage tracked by CUBRID may differ from the memory usage displayed by commands like pmap -d and htop. This is because CUBRID's memory monitoring feature does not track memory allocations occurring within header files and glibc internals. Additionally, there are some additional differences:
+    * The memory usage tracked by CUBRID may differ from the memory usage displayed by commands like pmap -d and htop. This is because CUBRID's memory monitoring feature does not track memory allocations occurring within header files and glibc internals. Additionally, there are a few notable differences:
 
         *   The heap memory usage of a process in pmap -d can be identified through the writeable/private section. However, this metric reflects the memory occupancy of the process based on the memory management policies of the OS. As a result, there may be differences between the memory usage shown by CUBRID's memory monitoring feature and what is displayed in pmap -d.
         *   htop provides the memory usage of a process through the RES(Resident Size) section. However, since this shows the physical memory usage of a process, it cannot be used to check only the heap memory usage of a process.
