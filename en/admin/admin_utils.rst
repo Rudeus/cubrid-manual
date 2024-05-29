@@ -3725,7 +3725,7 @@ The information output by the **cubrid memmon** utility has the following meanin
 
         *   for meta info : The memory usage of the metadata used to track and manage the total heap memory usage
 
-    *   File Name : Name of the CUBRID source code file and line number where the heap memory allocation occurred
+    *   File Name : The name of the CUBRID source code file and the line number where the heap memory allocation occurred
 
     *   Memory Usage(Ratio) : Heap memory usage (Ratio compared to the total heap memory usage)
 
