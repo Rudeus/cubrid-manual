@@ -3744,7 +3744,7 @@ The following are the [option] used by **cubrid memmon**.
 
 .. option:: --disable-force
 
-    Option to forcibly disables the memory monitoring feature. If the memory monitoring feature is forcibly disabled, **cubrid memmon** utility will not display the server's heap memory usage. To resume tracking memory usage, the server must be restarted. ::
+    Option to forcibly disable the memory monitoring feature. If the memory monitoring feature is forcibly disabled, the **cubrid memmon** utility will not display the server's heap memory usage. To resume tracking memory usage, the server must be restarted. ::
 
         cubrid memmon --disable-force demodb
 
