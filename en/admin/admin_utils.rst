@@ -3692,7 +3692,7 @@ The following shows [options] available with the **cubrid flashback** utility.
 memmon
 ---------
 
-The **cubrid memmon** utility prints the heap memory usage currently allocated to the server process. When the system parameter **enable_memory_monitoring** is set to *yes*, the server memory monitoring module tracks and manages total usage of heap memory and detailed memory allocation information based on the CUBRID source code and line information where memory allocation occurs. This allows users to check the current state of the server's heap memory usage at the time the utility is executed. ::
+The **cubrid memmon** utility prints the heap memory usage currently allocated to the server process. When the system parameter **enable_memory_monitoring** is set to *yes*, the server memory monitoring module tracks and manages the total usage of heap memory and detailed memory allocation information based on the CUBRID source code and the line information where memory allocation occurs. This allows users to check the current state of the server's heap memory usage at the time the utility is executed. ::
 
     cubrid memmon [option] database_name
 
