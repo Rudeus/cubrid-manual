@@ -3727,7 +3727,7 @@ The information output by the **cubrid memmon** utility has the following meanin
 
     *   File Name : The name of the CUBRID source code file and the line number where the heap memory allocation occurred
 
-    *   Memory Usage(Ratio) : Heap memory usage (Ratio compared to the total heap memory usage)
+    *   Memory Usage(Ratio) : Heap memory usage (ratio compared to the total heap memory usage)
 
 .. note::
                To record the history of heap memory allocations, the point at which heap memory is deallocated and the current memory usage becomes 0 is also included in the output of **cubrid memmon**.
