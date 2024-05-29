@@ -2414,7 +2414,7 @@ The following are other parameters. The type and value range for each parameter 
 
 .. note::
 
-    *   It is only supported on Linux.
+    *   This feature is only supported on Linux.
     *   During the automated process of tracking memory usage at the code level using macros, conflicts with glibc occurred. To prevent this, memory usage within glibc(STL containers) is not tracked, and memory usage occurring in header files is not tracked for the same reason.
     *   In an HA environment, slave nodes have a high proportion of memory allocation while processing logs from the master node. This increases the cost of memory monitoring, potentially causing performance issues. Therefore, it is not recommended to use this feature on slave nodes.
 
