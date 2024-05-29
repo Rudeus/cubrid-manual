@@ -3721,7 +3721,7 @@ The information output by the **cubrid memmon** utility has the following meanin
 
     *   Server name : The name of database
 
-    *   Total Memory Usage : Total amount of heap memory in use
+    *   Total Memory Usage : The total amount of heap memory in use
 
         *   for meta info : The memory usage of the metadata used to track and manage the total heap memory usage
 
