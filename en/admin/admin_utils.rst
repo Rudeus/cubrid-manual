@@ -3732,7 +3732,7 @@ The information output by the **cubrid memmon** utility has the following meanin
 .. note::
                To record the history of heap memory allocations, the point at which heap memory is deallocated and the current memory usage becomes 0 is also included in the output of **cubrid memmon**.
 
-The following are the [option] used by **cubrid memmon** .
+The following are the [option] used by **cubrid memmon**.
 
 .. program:: memmon
 
