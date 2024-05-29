@@ -3738,7 +3738,7 @@ The following are the [option] used by **cubrid memmon**.
 
 .. option:: -o, --output-file=FILE
 
-    Option to save the result of the utility execution to a specified file. If the **-o** option is not specified, messages will be displayed on a console screen. ::
+    Option to save the result of the utility execution to a specified file. If the **-o** option is not specified, messages will be displayed on the console screen. ::
 
         cubrid memmon -o memory_usage_output demodb
 
