@@ -2415,11 +2415,7 @@ The following are other parameters. The type and value range for each parameter 
 .. note::
 
     *   This feature is only supported on Linux.
-    *   During the automated process of tracking memory usage at the code level using macros, conflicts with glibc occurred. To prevent this, memory usage within glibc(STL containers) is not tracked, and memory usage occurring in header files is not tracked for the same reason.
-    *   In an HA environment, slave nodes have a high proportion of memory allocation while processing logs from the master node. This increases the cost of memory monitoring, potentially causing performance issues. Therefore, it is not recommended to use this feature on slave nodes.
-
-.. note::
-
+    *   Enabling the memory monitoring feature incurs additional overhead due to the tracking operations. This is particularly problematic in an HA environment, where slave nodes have a high proportion of memory allocations while processing logs from the master node, potentially causing performance issues. Therefore, it is not recommended to use this feature on slave nodes.
     * The memory usage tracked by CUBRID may differ from the memory usage displayed by commands like pmap -d and htop. This is because CUBRID's memory monitoring feature does not track memory allocations occurring within header files and glibc internals. Additionally, there are a few notable differences:
 
         *   The heap memory usage of a process in pmap -d can be identified through the writeable/private section. However, this metric reflects the memory occupancy of the process based on the memory management policies of the OS. As a result, there may be differences between the memory usage shown by CUBRID's memory monitoring feature and what is displayed in pmap -d.
