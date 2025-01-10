@@ -673,7 +673,7 @@ Sector_alloc_table_first_page       INT             First page of sector allocat
 Page_alloc_table_size_in_pages      INT             Size of page allocation table in page
 Page_alloc_table_first_page         INT             First page of page allocation table
 Last_system_page                    INT             Last system page
-Creation_time                       DATETIME        Database creation time
+Creation_time                       DATETIME        Volume creation time
 Db_charset                          INT             Charset number of database
 Checkpoint_lsa                      VARCHAR(64)     Lowest log sequence address to start the recovery process of this volume
 Boot_hfid                           VARCHAR(64)     System Heap file for booting purposes and multi volumes
@@ -721,9 +721,11 @@ It shows the header information of an active log file.
 
 ::
 
-    SHOW LOG HEADER [OF file_name];
+    SHOW LOG HEADER [OF file_path];
     
-If you omit **OF** *file_name*, it shows the header information of a memory; if you include **OF** *file_name*, it shows the header information of *file_name*.
+If you omit **OF** *file_path*, it shows the header information of a memory; if you include **OF** *file_path*, it shows the header information of *file_path*.
+In file_path, you can input either the relative path or the absolute path of the active log file.
+When entering a relative path, the base path is the directory where the active log file is located.
 
 This query has the following columns:
 
@@ -733,7 +735,7 @@ Column name                         Type            Description
 Volume_id                           INT             Volume identifier
 Magic_symbol                        VARCHAR(32)     Magic value for log file
 Magic_symbol_location               INT             Magic symbol location from log page
-Creation_time                       DATETIME        Database creation time
+Creation_time                       DATETIME        Volume creation time
 Release                             VARCHAR(32)     CUBRID Release version
 Compatibility_disk_version          VARCHAR(32)     Compatibility of the database against the current release of CUBRID
 Db_page_size                        INT             Size of pages in the database
@@ -878,6 +880,9 @@ It shows the header information of an archive log file.
 
     SHOW ARCHIVE LOG HEADER OF file_name;
 
+In file_path, you can input either the relative path or the absolute path of the archive log file.
+When entering a relative path, the base path is the directory where the archive log file is located.
+
 This query has the following columns:
 
 =================================== =============== ======================================================================================================================================
@@ -886,7 +891,7 @@ Column name                         Type            Description
 Volume_id                           INT             Identifier of log volume
 Magic_symbol                        VARCHAR(32)     Magic value for file/magic Unix utility
 Magic_symbol_location               INT             Magic symbol location from log page
-Creation_time                       DATETIME        Database creation time
+Creation_time                       DATETIME        Volume creation time
 Next_trans_id                       BIGINT          Next transaction identifier
 Num_pages                           INT             Number of pages in the archive log
 First_page_id                       BIGINT          Logical page id at physical location 1 in archive log
@@ -1390,7 +1395,7 @@ The following shows the examples of this syntax.
 ::
 
     <00001> Table_name   : 'tbl1'
-            Index_name   : 'index_a'
+            Index_name   : 'index_ab'
             Btid         : '(0|378|950)'
             Node_type    : 'LEAF'
             Max_key_len  : 0
@@ -1429,6 +1434,7 @@ Btid                                VARCHAR(64)     BTID (volid|fileid|root_page
 Num_distinct_key                    INT             Distinct key count (in leaf pages)
 Total_value                         INT             Total number of values stored in tree
 Deduplicate_distinct_key            INT             Deduplicated distinct key count (in leaf pages)
+Num_fence_key                       INT             Number of fence keys
 Avg_num_value_per_key               INT             Average number of values (OIDs) per key
 Avg_num_value_per_deduplicate_key   INT             Average number of values (OIDs) per deduplicated key
 Num_leaf_page                       INT             Leaf page count
@@ -1449,6 +1455,11 @@ Avg_num_ovf_page_per_key            INT             Average page key count in le
 Avg_free_space_per_page_ovf         VARCHAR(64)     Average page free space in leaf's overflow pages
 Max_num_ovf_page_a_key              INT             Maximum number of leaf's overflow pages for one key
 =================================== =============== ======================================================================================================================================
+
+.. note::
+
+    Fence key is a virtual key added to a leaf node to help operate the B-tree index.
+
 
 The following shows the examples of this syntax.
 
@@ -1472,6 +1483,7 @@ The following shows the examples of this syntax.
             Num_distinct_key                 : 0
             Total_value                      : 0
             Deduplicate_distinct_key         : 0
+            Num_fence_key                    : 0
             Avg_num_value_per_key            : 0
             Avg_num_value_per_deduplicate_key: 0
             Num_leaf_page                    : 1
@@ -1504,6 +1516,7 @@ The following shows the examples of this syntax.
             Num_distinct_key                 : 0
             Total_value                      : 0
             Deduplicate_distinct_key         : 0
+            Num_fence_key                    : 0
             Avg_num_value_per_key            : 0
             Avg_num_value_per_deduplicate_key: 0
             Num_leaf_page                    : 1
@@ -1529,6 +1542,7 @@ The following shows the examples of this syntax.
             Num_distinct_key                 : 0
             Total_value                      : 0
             Deduplicate_distinct_key         : 0
+            Num_fence_key                    : 0
             Avg_num_value_per_key            : 0
             Avg_num_value_per_deduplicate_key: 0
             Num_leaf_page                    : 1

@@ -369,14 +369,14 @@ CUBRID HA 그룹 내의 각 노드에서 **cubrid heartbeat start**\ 를 수행�
 
 CUBRID HA 그룹 내의 각 노드에서 **cubrid heartbeat status**\ 를 수행하여 구성 상태를 확인한다. ::
 
-    [nodeA]$ cubrid heartbeat status
+    [cubrid@nodeA]$ cubrid heartbeat status
     @ cubrid heartbeat list
-     HA-Node Info (current nodeA-node-name, state master)
+     HA-Node Info (current nodeA, state master)
        Node nodeB-node-name (priority 2, state slave)
        Node nodeA-node-name (priority 1, state master)
      HA-Process Info (nodeA 9289, state nodeA)
-       Applylogdb testdb@localhost:/home1/cubrid1/DB/testdb_nodeB.cub (pid 9423, state registered)
-       Copylogdb testdb@nodeB-node-name:/home1/cubrid1/DB/testdb_nodeB.cub (pid 9418, state registered)
+       Applylogdb testdb@localhost:/home1/cubrid1/DB/testdb_nodeB (pid 9423, state registered)
+       Copylogdb testdb@nodeB-node-name:/home1/cubrid1/DB/testdb_nodeB (pid 9418, state registered)
        Server testdb (pid 9306, state registered_and_active)
      
     [nodeA]$
@@ -666,9 +666,13 @@ CUBRID는 1시간 주기로 **ha_ping_hosts**\에 명시된 호스트를 점검�
 
 **ha_copy_log_base**
 
-복제 로그를 저장할 위치를 지정한다. 기본값은 **$CUBRID_DATABASES**/\ *<db_name>*\_\ *<host_name>*\ 이다.
+복제 로그를 저장할 상위 경로를 지정한다. 기본값은 $CUBRID_DATABASES 환경 변수에 설정된 디렉토리 경로이다.  복제 로그들은 서버와 데이터베이스명에 따라  <db_name>_<host_name>의 하위 디렉토리에 저장된다.
 
-자세한 내용은 :ref:`log-multiplexing`\ 를 참고한다.
+복제 로그 경로는 상대 경로 또는 절대 경로 설정이 가능하다. 
+다음은 각각의 설정 예제이다.
+
+예1) ha_copy_log_base=copylog : 상대 경로로 간주되어, 복제 로그 경로로 $CUBRID_DATABASES/copylog가 설정된다.
+예2) ha_copy_log_base=/log/copy_log : 절대 경로로 간주되어, 복제 로그 경로로 /log/copy_log copylog base가 설정된다.
 
 .. _ha_copy_log_max_archives:
 
@@ -791,6 +795,7 @@ SQL 로깅
 로그 파일 이름의 형식은 *<db name>_<master hostname>*\ **.sql.log.**\ *<id>*\ 이며, *<id>*\ 는 0부터 시작한다. 
 **ha_sql_log_max_size_in_mbytes**\에서 지정한 크기를 초과하면 *<id>*\ 의 값이 하나 증가된 새로운 파일이 생성된다.
 예를 들어, "ha_sql_log_max_size_in_mbytes=100"이면 demodb_nodeA.sql.log.0 파일이 100MB가 되면서 demodb_nodeA.sql.log.1이 새로 생성된다.
+*<id>*\ 는 최대값(4,294,967,295)을 초과하게 되면 0부터 재사용하게 된다.
 
 기본적으로, 2개의 최신 SQL 로그 파일만 유지되며, **ha_sql_log_max_count** 설정을 통해 유지할 최대 파일 개수를 조정할 수 있다.
 
@@ -1390,6 +1395,57 @@ CUBRID HA 그룹 정보와 CUBRID HA 구성 요소의 정보를 확인할 수 �
        Copylogdb testdb@nodeA:/home/cubrid/DB/testdb_nodeA (pid 2505, state registered)
        Server testdb (pid 2393, state registered_and_standby)
 
+
+-v의 경우, 해당노드의 상세정보를 출력한다.
+* score는 노드의 우선순위를 나타내며, 낮을 수록 높은 우선순위를 가진다.
+* missed heartbeat은 서로의 노드를 인식하는 heartbeat의 유실율을 나타내며, 해당 값이 높은 경우 환경설정/네트워크/방화벽 등을 점검해야 한다.
+
+Applylogdb, Copylogdb, Server 프로세스에 이벤트 발생 시간이며,이벤트가 발생하지 않은 경우 00:00:00.000으로 표기된다.
+
+* registered-time : 명령어를 통하여 프로세스 구동 요청 시간
+* deregistered-time : 명령어를 통하여 원격 프로세스 정지 요청 시간 (copylogdb와 applylogdb만 해당)
+* shutdown-time : HA 매니저(cub_master)가 프로세스를 정지한 시간
+* start-time : HA 매니저(cub_master)가 프로세스를 재 구동시간 
+
+**예시** 
+
+::
+
+    $ cubrid heartbeat status -v
+    @ cubrid heartbeat status
+
+    HA-Node Info (current cubrid1, state master)
+      Node cubrid2 (priority 2, state slave)
+        - score 2
+        - missed heartbeat 0
+      Node cubrid1 (priority 1, state master)
+        - score -32767
+        - missed heartbeat 0
+        
+    HA-Process Info (master 7392, state master)
+    Copylogdb testdb@cubrid2:/home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/databases/testdb_cubrid2 (pid 7841, state registered)
+     - exec-path [/home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/bin/cub_admin]
+     - argv      [cub_admin copylogdb -L /home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/databases/testdb_cubrid2 -m sync testdb@bagus2 ]
+     - registered-time   08/26/24 14:28:37.019
+     - deregistered-time 00/00/00 00:00:00.000
+     - shutdown-time     08/26/24 14:28:35.010
+     - start-time        08/26/24 14:28:36.012
+    Applylogdb testdb@localhost:/home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/databases/testdb_cubrid2 (pid 7746, state registered)
+     - exec-path [/home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/bin/cub_admin]
+     - argv      [cub_admin applylogdb -L /home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/databases/testdb_cubrid2 --max-mem-size=300 testdb@localhost ]
+     - registered-time   08/26/24 14:27:14.566
+     - deregistered-time 00/00/00 00:00:00.000
+     - shutdown-time     08/26/24 14:27:12.552
+     - start-time        08/26/24 14:27:13.558
+    Server testdb (pid 7904, state registered_and_active)
+     - exec-path [/home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/bin/cub_server]
+     - argv      [cub_server testdb ]
+     - registered-time   08/26/24 14:29:28.955
+     - deregistered-time 00/00/00 00:00:00.000
+     - shutdown-time     08/26/24 14:29:27.593
+     - start-time        08/26/24 14:29:28.594
+
+
 .. note:: CUBRID 9.0 미만 버전에서 사용되었던 **act**, **deact**, **deregister** 명령은 더 이상 사용되지 않는다.
 
 .. _cubrid-service-util:
@@ -1464,13 +1520,14 @@ CUBRID HA의 복제 로그 복사 및 반영 상태를 확인한다. ::
 
 *   Applied Info. : 슬레이브 노드가 복제 로그를 반영한 상태 정보를 나타낸다.
 *   Copied Active Info. : 슬레이브 노드가 복제 로그를 복사한 상태 정보를 나타낸다.
+*   Copied Archive Info. : 슬레이브 노드가 복사한 보관로그의 상태 정보를 나타낸다.
 *   Active Info. : 마스터 노드가 트랜잭션 로그를 기록한 상태 정보를 나타낸다.
 *   Delay in Copying Active Log: 트랜잭션 로그 복사 지연 상태를 나타낸다. 
 *   Delay in Applying Copied Log: 트랜잭션 로그 반영 지연 상태를 나타낸다. 
 
 ::
 
-    [nodeB] $ cubrid applyinfo -L /home/cubrid/DB/testdb_nodeA -r nodeA -a -i 3 testdb
+    [nodeB] $ cubrid applyinfo -L /home/cubrid/DB/testdb_nodeA -r nodeA -a -p 0 -i 3 testdb
      
      *** Applied Info. *** 
     Insert count                   : 289492
@@ -1483,13 +1540,27 @@ CUBRID HA의 복제 로그 복사 및 반영 상태를 확인한다. ::
      *** Copied Active Info. *** 
     DB name                        : testdb
     DB creation time               : 04:29:00.000 PM 11/04/2012 (1352014140)
+    Vol creation time              : 04:29:10.000 PM 11/04/2012 (1352014150)
     EOF LSA                        : 27722 | 10088
     Append LSA                     : 27722 | 10088
     HA server state                : active
 
+     *** Copied Archive Info. ***
+    DB name                        : testdb
+    DB creation time               : 04:29:00.000 PM 11/04/2012 (1352014140)
+    Vol creation time              : 04:29:20.000 PM 11/04/2012 (1352014160)
+    Archive number                 : 0
+    Log page 0 (phy: 1 pageid: 0, offset 0)
+    offset:0000 (tid:1 bck p:-1,o:-1 frw p:0,o:96 type:3)
+    offset:0096 (tid:1 bck p:0,o:0 frw p:0,o:320 type:5)
+    offset:0320 (tid:1 bck p:0,o:96 frw p:0,o:552 type:4)
+    offset:0552 (tid:1 bck p:0,o:320 frw p:0,o:608 type:4)
+    ...
+
      ***  Active Info. *** 
     DB name                        : testdb
     DB creation time               : 04:29:00.000 PM 11/04/2012 (1352014140)
+    Vol creation time              : 04:29:10.000 PM 11/04/2012 (1352014150)
     EOF LSA                        : 27726 | 2512
     Append LSA                     : 27726 | 2512
     HA server state                : active
@@ -1518,6 +1589,7 @@ CUBRID HA의 복제 로그 복사 및 반영 상태를 확인한다. ::
 
     *   DB name : 복제 로그 복사 프로세스가 로그를 복사하는 대상 데이터베이스의 이름
     *   DB creation time : 복제 로그 복사 프로세스가 복사하는 데이터베이스의 생성 시간
+    *   Vol creation time : 복제 로그 복사 프로세스가 복사하는 볼륨의 생성 시간
 
     *   EOF LSA : 복제 로그 복사 프로세스가 대상 노드에서 복사한 로그의 마지막 pageid와 offset 정보. 이 값과 "Active Info."의 EOF LSA 값의 차이 및 "Copied Active Info."의 Append LSA 값의 차이만큼 로그 복사의 지연이 있다.
 
@@ -1525,10 +1597,20 @@ CUBRID HA의 복제 로그 복사 및 반영 상태를 확인한다. ::
 
     *   HA server state : 복제 로그 복사 프로세스가 로그를 받아오는 데이터베이스 서버 프로세스의 상태. 상태에 대한 자세한 설명은 :ref:`ha-server` 를 참고하도록 한다.
 
+*   Copied Archive Info.
+
+    *   DB name : 복제 로그 복사 프로세스가 로그를 복사하는 대상 데이터베이스의 이름
+    *   DB creation time : 복제 로그 복사 프로세스가 복사하는 데이터베이스의 생성 시간
+    *   Vol creation time : 복제 로그 복사 프로세스가 복사하는 볼륨의 생성 시간
+    *   Archive number : 복제 로그 복사 프로세스가 복사하는 보관로그의 번호
+    *   Log page : 복제 로그 복사 프로세스가 복사하는 로그의 페이지 정보. pageid와 offset 정보를 포함한다.
+    *   offset : 로그 페이지의 offset 정보. 이 값은 pageid와 offset 정보를 포함한다.
+
 *   Active Info.
 
     *   DB name : **-r** 옵션에 설정한 노드의 데이터베이스의 이름
     *   DB creation time : **-r** 옵션에 설정한 노드의 데이터베이스 생성 시간
+    *   Vol creation time : **-r** 옵션에 설정한 노드의 볼륨 생성 시간
     *   EOF LSA : **-r** 옵션에 설정한 노드의 데이터베이스 트랜잭션 로그의 마지막 pageid와 offset 정보. 이 값과 "Copied Active Info."의 EOF LSA 값의 차이만큼 복제 로그 복사의 지연이 있다.
     
     *   Append LSA : **-r** 옵션에 설정한 노드의 데이터베이스 서버가 디스크에 실제로 쓴 트랜잭션 로그의 마지막 pageid와 offset 정보
@@ -3181,13 +3263,14 @@ HA 서비스 운영 중 슬레이브를 새로 추가하려면 기존의 마스�
             [nodeB]$ rm testdb/log/*
             
             [nodeB]$ rm -rf testdb_nodeA
+            [nodeB]$ rm $CUBRID/var/APPLYLOGDB/testdb
             
     *   *nodeA*\, *nodeC*\에서 *nodeB*\의 로그 복제 정지
     
         ::
         
-            [nodeA]$ cubrid heartbeat repl stop testdb nodeB
-            [nodeC]$ cubrid heartbeat repl stop testdb nodeB
+            [nodeA]$ cubrid heartbeat repl stop nodeB
+            [nodeC]$ cubrid heartbeat repl stop nodeB
     
     *   *nodeA*\, *nodeC*\에서 *nodeB*\에 대한 복제 로그 삭제
     
@@ -3196,17 +3279,8 @@ HA 서비스 운영 중 슬레이브를 새로 추가하려면 기존의 마스�
             [nodeA]$ rm -rf $CUBRID_DATABASES/testdb_nodeB
             [nodeC]$ rm -rf $CUBRID_DATABASES/testdb_nodeB
 
-2.  HA 카탈로그 테이블 삭제, *nodeA*\의 백업 및 *nodeB*\의 복구, HA 카탈로그 테이블에 정보 추가
+2.  *nodeA*\의 백업 및 *nodeB*\의 복구, HA 카탈로그 테이블에 정보 추가
 
-    *   HA 카탈로그 테이블인 db_ha_apply_info의 레코드 삭제
-    
-        *nodeB*\의 db_ha_apply_info 정보를 모두 삭제하여 초기화한다.
-        
-        ::
-        
-            [nodeB]$ csql --sysadm -u dba -S testdb 
-            csql> DELETE FROM db_ha_apply_info;
-            
         *nodeA*, *nodeC*\에서 *nodeB*\에 대한 db_ha_apply_info 정보를 삭제한다.
         
         ::
@@ -3450,6 +3524,7 @@ HA 서비스 운영 중 슬레이브를 새로 추가하려면 기존의 마스�
          *** Copied Active Info. ***
         DB name                        : testdb
         DB creation time               : 11:28:00.000 AM 12/17/2010  (1292552880)
+        Vol creation time              : 11:28:10.000 AM 12/17/2010  (1292552890)
         EOF LSA                        : 1913 | 2976
         Append LSA                     : 1913 | 2976
         HA server state                : active
@@ -3457,6 +3532,7 @@ HA 서비스 운영 중 슬레이브를 새로 추가하려면 기존의 마스�
          ***  Active Info. ***
         DB name                        : testdb
         DB creation time               : 11:28:00.000 AM 12/17/2010  (1292552880)
+        Vol creation time              : 11:28:10.000 AM 12/17/2010  (1292552890)
         EOF LSA                        : 1913 | 2976
         Append LSA                     : 1913 | 2976
         HA server state                : active
@@ -3479,6 +3555,7 @@ HA 서비스 운영 중 슬레이브를 새로 추가하려면 기존의 마스�
          *** Copied Active Info. ***
         DB name                        : testdb
         DB creation time               : 11:28:00.000 AM 12/17/2010  (1292552880)
+        Vol creation time              : 11:28:10.000 AM 12/17/2010  (1292552890)
         EOF LSA                        : 1913 | 2976
         Append LSA                     : 1913 | 2976
         HA server state                : active
@@ -3939,7 +4016,7 @@ CUBRID HA 환경에서의 복제 재구축은 다중 슬레이브 노드의 다�
 복제 재구축을 위해서는 마스터 노드, 슬레이브 노드, 레플리카 노드에서 아래 환경이 동일해야 한다.
 
 *   CUBRID 버전
-*   환경 변수(**$CUBRID**, **$CUBRID_DATABASES**, **$LD_LIBRARY_PATH**, **$PATH**)
+*   환경 변수(**$CUBRID**, **$CUBRID_DATABASES**, **$LD_LIBRARY_PATH**, **$PATH**, **$CUBRID_TMP**, **$TMPDIR**)
 *   데이터베이스 볼륨, 로그 및 복제 로그 경로
 *   리눅스 서버의 사용자 아이디 및 비밀번호
 *   **ha_mode**, **ha_copy_sync_mode**, **ha_ping_hosts** 를 제외한 모든 HA 관련 파라미터

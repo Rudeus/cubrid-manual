@@ -1,7 +1,7 @@
-
 :meta-keywords: cubrid update statistics, cubrid check statistics, query plan, query profiling, sql hint, cubrid index hint, cubrid special index, cubrid using index
 :meta-description: How to optimize query execution in CUBRID database.
 
+.. include:: join_method.inc
 
 통계 정보 갱신
 ==============
@@ -9,6 +9,13 @@
 테이블과 인덱스에 대한 통계 정보는 데이터베이스 시스템이 질의를 효과적으로 처리할 수 있게 한다. 통계 정보는 인덱스의 생성, 테이블의 생성등 DDL 문과 INSERT, DELETE 등 DML 문에 대해서 자동으로 갱신되지 않는다. **UPDATE STATISTICS** 문만이 통계정보를 갱신하는 유일한 방법이다. 필요한 경우 사용자가 직접 **UPDATE STATISTICS** 문을 수행하여 통계 정보를 갱신해야 한다(:ref:`info-stats` 참고)
 
 **UPDATE STATISTICS** 문은 주기적으로 수행할 것을 권장한다. 또한 새로운 인덱스가 추가되거나, 대량의 **INSERT**, 혹은 **DELETE** 문이 수행되어 실제 정보와 통계 정보 사이에 차이가 커질 때 수행할 것을 권장한다.
+
+통계정보 갱신으로 관련된 질의의 실행계획 캐시는 삭제되지 않으며, 질의 실행 시 아래 두 가지 기준을 만족할 때 실행계획이 재생성된다.
+
+    #. 실행계획 캐시 생성 혹은 재생성 확인 후 6분이 지난 시점 
+    #. 페이지가 10배 이상 커지거나 작아진 테이블의 통계정보가 갱신됨
+
+필요한 경우 사용자가 **PLANDUMP** 유틸리티를 사용해서 직접 삭제할 수 있다. **PLANDUMP** 대한 자세한 내용은 :ref:`plandump`\ 를 참고한다.
 
 ::
 
@@ -18,7 +25,7 @@
   
     UPDATE STATISTICS ON CATALOG CLASSES [WITH FULLSCAN]; 
 
-*   **WITH FULLSCAN**: 지정된 테이블의 전체 데이터를 가지고 통계 정보를 업데이트한다. 생략 시 샘플링한 데이터를 가지고 통계 정보를 업데이트한다. 데이터 샘플은 테이블 전체 페이지 수와 상관없이 7페이지이다.
+*   **WITH FULLSCAN**: 지정된 테이블의 전체 데이터를 가지고 통계 정보를 업데이트한다. 생략 시 샘플링한 데이터를 가지고 통계 정보를 업데이트한다. 데이터 샘플은 테이블 전체 페이지 수와 상관없이 5000페이지이다.
 
 *   **ALL CLASSES**: 모든 테이블의 통계 정보를 업데이트한다. 
 
@@ -70,6 +77,10 @@
 	/* ERROR: before ' ; '
          * Class public.s does not exist. */
 
+.. note::
+
+    CUBRID 11.4 부터는  **UPDATE STATISTICS** 문을 실행할 때 **SELECT** 권한이 필요하다.
+
 .. _info-stats:
 
 통계 정보 확인
@@ -88,28 +99,39 @@ CSQL 인터프리터의 세션 명령어로 지정한 테이블의 통계 정보
 
 .. code-block:: sql
 
-    CREATE TABLE t1 (code INT);
-    INSERT INTO t1 VALUES(1),(2),(3),(4),(5);
-    CREATE INDEX i_t1_code ON t1(code);
+    CREATE TABLE t1 (code INT, name VARCHAR(20));
+    INSERT INTO t1 VALUES(1,'Park'),(2,'Park'),(3,'Joo'),(4,'Joo'),(5,'Song');
+    CREATE INDEX i_t1_code ON t1(code,name);
     UPDATE STATISTICS ON t1;
+    ;info stats t1
 
 ::
 
-    ;info stats t1
     CLASS STATISTICS
     ****************
-     Class name: t1 Timestamp: Mon Mar 14 16:26:40 2011
+     Class name: t1 Timestamp: Thu Dec 19 15:15:10 2024
      Total pages in class heap: 1
      Total objects: 5
-     Number of attributes: 1
-     Attribute: code
-        id: 0
-        Type: DB_TYPE_INTEGER
-        Minimum value: 1
-        Maximum value: 5
+     Number of attributes: 2
+     Attribute: code (integer)
+        Number of Distinct Values: 5
         B+tree statistics:
-            BTID: { 0 , 1049 }
-            Cardinality: 5 (5) , Total pages: 2 , Leaf pages: 1 , Height: 2
+            BTID: { 0 , 5760 }
+            Cardinality: 5 (5,5) , Total pages: 3 , Leaf pages: 1 , Height: 2
+     
+     Attribute: name (character varying)
+        Number of Distinct Values: 3
+
+*   *Timestamp*: 통계정보가 갱신된 시간이다.
+*   *Total pages*: 테이블의 페이지 개수이다.
+*   *Total objects*: 테이블의 총 행의 개수이다.
+*   *Number of Distinct Values*: 중복이 제거된 값의 개수이다. **code** 칼럼은 모두 다른 값이므로 5개이다. **LOB** 타입과 4000자리가 넘는 **VARCHAR**\ 칼럼은 해당값이 생성되지 않는다. 옵티마이저에서 선택도를 산정하는 데 사용되며 자세한 내용은 :ref:`optimizer-principle`\ 를 참고한다.
+*   B+tree statistics: 인덱스 통계정보이다.
+
+    *   *B+tree Cardinality*: 인덱스 key 값의 누적된 중복이 제거된 값의 개수이다. 위 예제에서 **(5,5)**\는 인덱스 칼럼 **(code,name)**\과 매칭된다. 첫 번째 **5**\는 **code** 컬럼의 중복이 제거된 값의 개수이고, 두 번째 **5**\는 **code,name** 두 컬럼의 값의 중복이 제거된 개수이다. *Number of Distinct Values*\와 달리 앞 칼럼과 함께 누적된 중복이 제거된 값의 개수이므로 5개이다.
+    *   *Total pages*: 인덱스 전체 페이지 개수이다.
+    *   *Leaf pages*: 인덱스 리프 노드의 페이지 개수이다.
+    *   *Height*: 리프 노드를 포함한 B+tree 인덱스의 높이이다.
 
 .. _viewing-query-plan:
 
@@ -131,7 +153,7 @@ CUBRID SQL 질의에 대한 실행 계획(query plan)을 보기 위해서는 다
     SET OPTIMIZATION LEVEL opt-level [;]
     GET OPTIMIZATION LEVEL [ { TO | INTO } variable ] [;]
 
-*   *opt-level* : 최적화 수준을 지정하는 값으로 다음과 같은 의미를 갖는다.
+*   *opt-level* : 최적화 수준을 지정하는 값으로 다음과 같은 의미를 갖으며, 이 외에 값을 설정할 경우 에러를 발생한다.
 
     *   0 : 질의 최적화를 수행하지 않는다. 실행하는 질의는 가장 단순한 형태의 실행 계획을 가지고 실행된다. 디버깅의 용도 이외에는 사용되지 않는다.
     
@@ -261,6 +283,7 @@ CSQL에서 ";plan detail" 명령 입력 또는 "SET OPTIMIZATION LEVEL 513;"을 
     *   nl-join: 중첩 루프 조인, Nested loop join
     *   m-join: 정렬 병합 조인, Sort merge join
     *   idx_join: 중첩 루프 조인인데 outer 테이블의 행(row)을 읽으면서 inner 테이블에서 인덱스를 사용하는 조인
+    *   hash-join: 해시 조인, Hash join
     
 *   조인 종류: 위에서 (inner join) 부분으로, 질의 계획에서 출력되는 조인 종류는 다음과 같다.
     
@@ -362,6 +385,228 @@ CSQL에서 ";plan detail" 명령 입력 또는 "SET OPTIMIZATION LEVEL 513;"을 
     SELECT /*+ RECOMPILE ORDERED */  DISTINCT h.host_year, o.host_nation
     FROM history h INNER JOIN olympic o ON h.host_year = o.host_year;
 
+**LEADING** 힌트를 명시하여 테이블 순서를 지정할 수 있다. **ORDERED** 힌트와 다르게 작성된 순서와 상관없이 지정이 가능하다.
+
+.. code-block:: sql
+
+    SELECT /*+ RECOMPILE LEADING(o,h) */  DISTINCT h.host_year, o.host_nation
+    FROM history h INNER JOIN olympic o ON h.host_year = o.host_year;
+
+.. _optimizer-principle:
+
+최적화기 원리
+=====================
+
+**CUBRID**\의 최적화기는 질의 실행 계획을 생성할 때 비용 기반 최적화를 진행하며, 통계정보를 통해 **선택도**\와 **예측되는 행과 페이지 개수**\를 산정한다. 이를 기반으로 비용을 계산하여 가장 적은 비용을 가진 실행계획을 선택한다.
+
+선택도
+-----------
+
+**선택도**\는 특정 조회 조건을 필터하였을 때 전체 대비 선택될 데이터의 비율이다. 최적화기는 **WHERE** 절의 각각의 조회 조건에 대해서 선택도를 산정한다. **CUBRID**\는 전체 데이터가 고르게 분포되어 있다고 가정하고, 통계정보의 **Number of Distinct Value**\을 사용하여 **선택도**\를 산정한다.
+
+::
+
+    SELECTIVITY = 1 / Number of Distinct Value
+
+.. code-block:: sql
+
+    CREATE TABLE t1 (code INT, name VARCHAR(20));
+    INSERT INTO t1 VALUES(1,'Park'),(2,'Park'),(3,'Park'),(4,'joo'),(5,'joo'),(5,'joo');
+    CREATE INDEX i_t1_code ON t1(code,name);
+    UPDATE STATISTICS ON t1;
+     
+    ;info stats t1
+
+::
+
+    CLASS STATISTICS
+    ****************
+     Class name: t1 Timestamp: Fri Dec 20 13:07:58 2024
+     Total pages in class heap: 1
+     Total objects: 6
+     Number of attributes: 2
+     Attribute: code (integer)
+        Number of Distinct Values: 5
+        B+tree statistics:
+            BTID: { 0 , 5760 }
+            Cardinality: 5 (5,5) , Total pages: 3 , Leaf pages: 1 , Height: 2
+     
+     Attribute: name (character varying)
+        Number of Distinct Values: 2
+
+.. code-block:: sql
+
+    ;plan detail
+    SELECT /*+ recompile */ * FROM t1 WHERE code = 3 AND name IN ('Song', 'Ham');
+
+::
+
+    Join graph terms:
+    term[0]: [dba.t1].code=3 (sel 0.2)
+    term[1]: [dba.t1].[name] range ('Ham' =  or 'Song' = ) (sel 0.75)
+
+**term[0]: [dba.t1].code=3**\는 통계정보에서 **code**\의 **Number of Distinct Values**\가 5이므로 선택도는 1/5, 즉 0.2이다.
+**term[1]: [dba.t1].[name] range ('Ham' =  or 'Song' = )** 는 **name**\을 두 가지 값으로 **OR** 연산하고 있다. **name**\의 **Number of Distinct Values**\가 2이므로 **선택도**\는 1/2이고, 두 값을 더하고 교집합을 제외하면 **0.5 + 0.5 - (0.5 x 0.5)** 계산으로 0.75가 나온다.
+
+예측되는 행수
+---------------
+
+질의를 실행했을 때 조회될 것으로 **예측되는 행수**\는 **전체 데이터 행수**\에 **선택도** 곱해서 산정한다.
+
+::
+
+    Number of expected rows = total rows of a table * selectivity
+
+.. code-block:: sql
+
+    ;plan detail
+    SELECT /*+ recompile */ * FROM t1 WHERE name = 'Park';
+
+::
+
+    Join graph nodes:
+    node[0]: dba.t1 dba.t1(6/1)
+    Join graph terms:
+    term[0]: [dba.t1].[name]='Park' (sel 0.5)
+     
+    Query plan:
+     
+    sscan
+        class: t1 node[0]
+        sargs: term[0]
+        cost:  1 card 3
+
+**dba.t1(6/1)** 은 t1 테이블의 전체 행수가 6개이고 페이지수가 1개인 것을 나타낸다. **[dba.t1].[name]='Park'**\의 선택도가 0.5이므로 예측되는 행수는 **6 x 0.5** 계산으로 3개이다. 실행계획의 **cost:  1 card 3**\는 비용은 1이고 예측되는 행수가 3인 것을 나타낸다.
+
+순차 스캔 비용
+---------------
+
+최적화기는 비용을 산정할 때 아래 두 가지 사항을 고려한다.
+
+    #. 페이지를 읽는 비용
+    #. 반복되는 루틴의 CPU 비용
+
+아래는 순차 스캔의 비용이 어떻게 산정되는지 보여준다.
+
+::
+
+    페이지 비용 = 테이블의 페이지 개수
+    CPU 비용 = 테이블의 전체 행의 개수 X CPU 가중치
+
+.. code-block:: sql
+
+    drop table if exists t1;
+    create table t1 (col1 int, col2 int, col3 int, col4 int);
+    insert into t1 select mod(rownum,2), mod(rownum,4), rownum, rownum from dual connect by level <= 4000;
+    update statistics on t1;
+     
+    ;plan detail
+    select /*+ recompile */ count(*) from t1 where col2 = 2;
+
+::
+
+    Join graph nodes:
+    node[0]: dba.t1 dba.t1(4000/9)
+    Join graph terms:
+    term[0]: [dba.t1].col2=2 (sel 0.25)
+     
+    Query plan:
+     
+    sscan
+        class: t1 node[0]
+        sargs: term[0]
+        cost:  19 card 1000
+
+**node[0]: dba.t1 dba.t1(4000/9)** 에서 t1 테이블의 전체 행의 개수는 4000개이고 페이지 개수는 9개인 것을 알 수 있다. 그러므로 페이지 비용은 t1 테이블의 전체 페이지 개수인 9이다. CPU 비용은 테이블의 전체 행수에 CPU 가중치를 곱한 것으로, **4000 x 0.0025** 계산하면 10이다. 두 값을 더하면 19이며, **cost:  19 card 1000** 에서 비용은 19이고 조회가 예상되는 행수는 1000개인 것을 알 수 있다.
+
+인덱스 스캔 비용
+-----------------
+
+인덱스 스캔은 논리프 노드, 리프 노드 그리고 힙 영역의 탐색으로 진행된다. 인덱스 스캔의 시작은 루트노드를 포함한 논리프 노드를 탐색하여 리프노드의 시작점을 찾는 것이다. 그리고 리프노드를 탐색하며 만족하는 키의 OID정보를 조회하고 필요하다면 OID 정보로 힙영역을 스캔한다. 아래는 예제는 어떻게 인덱스 스캔이 수행되는지 보여준다.
+
+.. code-block:: sql
+
+    drop table if exists t2;
+    create table t2 (col1 int, col2 int, col3 int, col4 int);
+    insert into t2 select mod(rownum,20), mod(rownum,80), rownum, rownum from dual connect by level <= 4000;
+    create index idx on t2(col1,col2,col3);
+    update statistics on t2;
+     
+    ;plan detail
+    select /*+ recompile */ count(*) from t2 where col1 = 1 and col3 = 1 and col4 = 1;
+
+::
+
+    Join graph terms:
+    term[0]: [dba.t2].col4=1 (sel 0.00025)
+    term[1]: [dba.t2].col3=1 (sel 0.0125)
+    term[2]: [dba.t2].col1=1 (sel 0.05)
+
+    Query plan:
+     
+    iscan
+        class: t2 node[0]
+        index: idx term[2]
+        filtr: term[1]
+        sargs: term[0]
+        cost:  4 card 1
+
+**Join graph terms**\의 정보를 통해 실행계획에 사용된 조회 조건의 확인이 가능하다. **index: idx term[2]**\는 인덱스 수직 스캔으로 논리프 노드의 탐색에 사용된 조회 조건이다. 인덱스 수평 스캔 시 리프 노드에 대해서 키 필터하는데 **filtr: term[1]** 조회 조건이 사용되었다. 힙에 접근하여 조회 시에는 **sargs: term[0]** 조회 조건을 사용하여 필터한다.
+
+::
+
+    ;info stats t2
+
+::
+
+     Attribute: col1 (integer)
+        Number of Distinct Values: 20
+        B+tree statistics:
+            BTID: { 0 , 5760 }
+            Cardinality: 4000 (20,4000,4000) , Total pages: 11 , Leaf pages: 9 , Height: 2
+
+인덱스 스캔의 비용은 아래와 같이 계산된다.
+
+    #. 페이지를 읽는 비용 = 접근 예측되는 논리프 노드 페이지 + 리프 노드 페이지 + 힙 페이지
+    #. 반복되는 루틴의 CPU 비용 = 접근 예측되는 리프 노드 키 개수
+
+논리프 노드의 페이지 개수는 통계정보의 인덱스 **Height**\가 2이고 리프노드를 제외한 읽어야 하는 페이지는 **2 - 1** 이므로 1개이다. 리프 노드 페이지 개수는 **Leaf pages** 에 논리프 노드의 탐색에 사용된 조회조건 **index: idx term[2]** 의 선택도를 곱하여 구한다. **MAX(9 X 0.05, 1)** 이므로 읽어야 할 리프 노드 페이지 개수는 1개이다. 읽어야 하는 힙 페이지 개수는 테이블의 전체 page수에 **index**\와 **filtr** 조건의 선택도를 곱하여 구한다. 여기서는 **MAX(9 X 0.05 X 0.0125, 1)** 으로 계산되여 1개의 페이지를 읽어야 하는 것으로 계산된다. 마지막으로 CPU 비용은 테이블의 전체 행수에서 **index: idx term[2]** 의 선택도와 CPU 가중치를 곱하여 구한다. **MAX(4000 X 0.05 X 0.0025, 1)** 으로 계산하면 1이 나오며, 지금까지의 모든 결과를 합하면 비용은 4라는 것을 알 수 있다. 실행계획에서 **cost:  4 card 1** 를 보면 비용은 4이고 예상되는 행수는 1개라는 것을 알 수 있다.
+
+조인 질의 비용
+-----------------------
+
+조인 질의의 비용은 선행 테이블의 비용과 후행 테이블의 비용을 각각 산출하고, 조인 방법에 따라 비용을 산정한다. 아래 예제는 중첩 루프 조인에서 비용이 어떻게 계산되는지 보여준다.
+
+.. code-block:: sql
+
+    create index idx1 on t2(col4);
+     
+    --;plan detail
+    select /*+ recompile */ count(*)
+    from t1 a, t2 b
+    where a.col4 = b.col4
+    and b.col1 = 1
+    and b.col3 = 1
+    and a.col2 = 2;
+
+::
+
+    Query plan:
+     
+    idx-join (inner join)
+        outer: sscan
+                   class: a node[0]
+                   sargs: term[3]
+                   cost:  19 card 1000
+        inner: iscan
+                   class: b node[1]
+                   index: idx1 term[0]
+                   sargs: term[1] AND term[2]
+                   cost:  2 card 3
+        cost:  572 card 1
+
+선행되는 테이블은 *a*\이며 후행 테이블은 *b*\이다. 중첩 루프 조인 특성상 선행 테이블의 행수만큼 후행 테이블의 실행이 반복되므로 *b* 테이블의 가변 비용과 *a* 테이블의 예상되는 행수를 곱하여 후행 테이블의 비용을 산정 할 수 있다. **CUBRID**\는 내부적으로 고정 비용과 가변 비용을 따로 관리하고 있으며 실행계획에서는 이 정보를 확인 할 수 없다. 대략 후행 테이블의 가변비용은 *0.553*\이며 조인 시 발생하는 후행 테이블의 비용은 *0.553 * 1000* 계산하면 553이고 선행 테이블의 비용 *19*\를 더하면 최종 비용은 *572*\이다.
+
 .. _query-profiling:
  
 질의 프로파일링
@@ -416,7 +661,7 @@ SQL에 대한 성능 분석을 위해서는 질의 프로파일링(profiling) �
       rewritten query: select o.host_year, o.host_nation, o.host_city, sum(p.gold) from OLYMPIC o, PARTICIPANT p where o.host_year=p.host_year and (p.gold> ?:0 ) group by o.host_nation
 
     Trace Statistics:
-      SELECT (time: 1, fetch: 975, ioread: 2)
+      SELECT (time: 2, fetch: 975, fetch_time: 1, ioread: 2)
         SCAN (table: olympic), (heap time: 0, fetch: 26, ioread: 0, readrows: 25, rows: 25)
           SCAN (index: participant.fk_participant_host_year), (btree time: 1, fetch: 941, ioread: 2, readkeys: 5, filteredkeys: 5, rows: 916) (lookup time: 0, rows: 14)
         GROUPBY (time: 0, sort: true, page: 0, ioread: 0, rows: 5)
@@ -424,10 +669,11 @@ SQL에 대한 성능 분석을 위해서는 질의 프로파일링(profiling) �
 
 위에서 "Trace Statistics:" 이하가 트레이스 결과를 출력한 것이며 트레이스 결과의 각 항목을 설명하면 다음과 같다.
 
-*   **SELECT** (time: 1, fetch: 975, ioread: 2) 
+*   **SELECT** (time: 2, fetch: 975, fetch_time: 1, ioread: 2)
     
-    *   time: 1 => 전체 질의 시간 1ms 소요. 
+    *   time: 2 => 전체 질의 시간 2ms 소요.
     *   fetch: 975 => 페이지에 대해 975회 fetch(개수가 아닌 접근 회수임. 같은 페이지를 다시 fetch하더라도 회수가 증가함). 
+    *   fetch_time: 1 => fetch 시간 1ms 소요.
     *   ioread: 2회 디스크 접근.
 
     : SELECT 질의에 대한 전체 통계이다. fetch 회수와 ioread 회수는 질의를 재실행하면 질의 결과의 일부를 버퍼에서 가져오게 되면서 줄어들 수 있다.
@@ -498,7 +744,7 @@ SQL에 대한 성능 분석을 위해서는 질의 프로파일링(profiling) �
     
     
     Trace Statistics:
-      SELECT (time: 6, fetch: 880, ioread: 0)
+      SELECT (time: 6, fetch: 880, fetch_time: 2, ioread: 0)
         SCAN (table: olympic), (heap time: 0, fetch: 104, ioread: 0, readrows: 25, rows: 25)
           SCAN (hash temp(m), buildtime : 0, time: 0, fetch: 0, ioread: 0, readrows: 76, rows: 38)
             SCAN (index: nation.pk_nation_code), (btree time: 2, fetch: 760, ioread: 0, readkeys: 38, filteredkeys: 0, rows: 38) (lookup time: 0, rows: 38)
@@ -514,6 +760,7 @@ SQL에 대한 성능 분석을 위해서는 질의 프로파일링(profiling) �
  
 *   time: 해당 질의에 대한 전체 수행 시간(ms)
 *   fetch: 해당 질의에 대해 페이지를 fetch한 회수
+*   fetch_time : 해당 질의에 대해 페이지 fetch 수행 시간(ms)
 *   ioread: 해당 질의에 대한 전체 I/O 읽기 회수. 데이터를 읽을 때 물리적으로 디스크에 접근한 회수
 
 **SCAN**
@@ -565,7 +812,7 @@ SQL에 대한 성능 분석을 위해서는 질의 프로파일링(profiling) �
 ::
 
         Trace Statistics:
-          SELECT (time: 0, fetch: 16, ioread: 0)
+          SELECT (time: 0, fetch: 16, fetch_time: 0, ioread: 0)
             SCAN (table: agl_tbl), (noscan time: 0, fetch: 0, ioread: 0, readrows: 0, rows: 0, agl: pk_agl_tbl_id)
 
 **GROUPBY**    
@@ -664,7 +911,10 @@ SQL 힌트
     USE_NL [ (<spec_name_comma_list>) ] |
     USE_IDX [ (<spec_name_comma_list>) ] |
     USE_MERGE [ (<spec_name_comma_list>) ] |
+    USE_HASH [ (<spec_name_comma_list>) ] |
+    NO_USE_HASH [ (<spec_name_comma_list>) ] |
     ORDERED |
+    LEADING |
     USE_DESC_IDX |
     USE_SBR |
     INDEX_SS [ (<spec_name_comma_list>) ] |
@@ -673,6 +923,7 @@ SQL 힌트
     NO_COVERING_IDX |
     NO_MULTI_RANGE_OPT |
     NO_SORT_LIMIT |
+    NO_SUBQUERY_CACHE |
     NO_PUSH_PRED |
     NO_MERGE |
     NO_ELIMINATE_JOIN |
@@ -702,7 +953,11 @@ SQL 힌트는 주석에 더하기 기호(+)를 함께 사용하여 지정한다.
 
 *   **USE_NL**: 테이블 조인과 관련한 힌트로서, 질의 최적화기 중첩 루프 조인 실행 계획을 만든다.
 *   **USE_MERGE**: 테이블 조인과 관련한 힌트로서, 질의 최적화기는 정렬 병합 조인 실행 계획을 만든다.
+*   **USE_HASH**: 테이블 조인과 관련한 힌트로서, 질의 최적화기는 해시 조인 실행 계획을 만든다. 자세한 내용은 :ref:`join-method_hash`\을 참고한다.
+*   **NO_USE_HASH**: 테이블 조인과 관련한 힌트로서, 질의 최적화기가 해시 조인 실행 계획을 만들지 않는다. 자세한 내용은 :ref:`join-method_hash`\을 참고한다.
 *   **ORDERED**: 테이블 조인과 관련한 힌트로서, 질의 최적화기는 **FROM** 절에 명시된 테이블의 순서대로 조인하는 실행 계획을 만든다. **FROM** 절에서 왼쪽 테이블은 조인의 외부 테이블이 되고, 오른쪽 테이블은 내부 테이블이 된다.
+*   **LEADING**: 테이블 조인과 관련한 힌트로서, 질의 최적화기는 LEADING 힌트에 명시된 테이블의 순서대로 조인하는 실행 계획을 만든다.
+
 *   **USE_IDX**: 인덱스 관련한 힌트로서, 질의 최적화기는 명시된 테이블에 대해 인덱스 조인 실행 계획을 만든다.
 *   **USE_DESC_IDX**: 내림차순 스캔을 위한 힌트이다. 자세한 내용은 :ref:`index-descending-scan`\을 참고한다.
 *   **USE_SBR**: 구문 기반 복제(statement-based replication)를 위한 힌트로서, 기본키가 설정되지 않은 테이블에 대한 데이터 복제도 지원한다.
@@ -717,6 +972,7 @@ SQL 힌트는 주석에 더하기 기호(+)를 함께 사용하여 지정한다.
 *   **NO_COVERING_IDX**: 커버링 인덱스 기능을 사용하지 않도록 하는 힌트이다. 자세한 내용은 :ref:`covering-index`\를 참고한다.
 *   **NO_MULTI_RANGE_OPT**: 다중 키 범위 최적화 기능을 사용하지 않도록 하는 힌트이다. 자세한 내용은 :ref:`multi-key-range-opt`\를 참고한다.
 *   **NO_SORT_LIMIT**: SORT-LIMIT 최적화를 사용하지 않기 위한 힌트이다. 자세한 내용은 :ref:`sort-limit-optimization`\를 참고한다.
+*   **NO_SUBQUERY_CACHE**: SUBQUERY_CACHE 최적화를 사용하지 않기 위한 힌트이다. 자세한 내용은 :ref:`correlated-subquery-cache`\를 참고한다.
 *   **NO_PUSH_PRED**: PREDICATE-PUSH 최적화를 사용하지 않기 위한 힌트이다.
 *   **NO_MERGE**: VIEW-MERGE 최적화를 사용하지 않기 위한 힌트이다.
 *   **NO_ELIMINATE_JOIN**: 조인 제거 최적화를 사용하지 않기 위한 힌트이다. 자세한 내용은 :ref:`join-elimination-optimization`\를 참고한다.
@@ -762,6 +1018,27 @@ SQL 힌트는 주석에 더하기 기호(+)를 함께 사용하여 지정한다.
     위와 같은 질의를 수행한다면 테이블 a와 b가 조인될 때는 **USE_NL**\ 이 적용되고 테이블 c가 조인될 때도 **USE_NL**\ 이 적용되며, 테이블 d가 조인될 때는 **USE_MERGE**\ 가 적용된다.
 
     <*spec_name*>\ 이 주어지지 않고 **USE_NL**\ 과 **USE_MERGE**\ 가 함께 지정된 경우 주어진 힌트는 무시된다. 일부 경우에 질의 최적화기는 주어진 힌트에 따라 질의 실행 계획을 만들지 못할 수 있다. 예를 들어 오른쪽 외부 조인에 대해 **USE_NL**\ 을 지정한 경우 이 질의는 내부적으로 왼쪽 외부 조인 질의로 변환이 되어 조인 순서는 보장되지 않을 수 있다.
+
+.. note::
+
+    **ORDERED**\가 **LEADING**\과 함께 지정될 경우 **LEADING** 힌트는 무시된다.
+    **LEADING** 힌트가 여러게 지정될 경우 첫번째 **LEADING** 힌트만 적용된다.
+
+    .. code-block:: sql
+
+        SELECT /*+ ORDERED LEADING(b, d) */ *
+        FROM a INNER JOIN b ON a.col=b.col
+        INNER JOIN c ON b.col=c.col INNER JOIN d ON c.col=d.col;
+
+    위와 같은 질의를 수행한다면 **LEADING** 힌트는 무시되며, **ORDERED** 힌트에 따라서 **FROM** 절의 순서인, 테이블 a, b, c, d의 순서로 조인된다.
+
+    .. code-block:: sql
+
+        SELECT /*+ LEADING(b, d) LEADING(c, d) */ *
+        FROM a INNER JOIN b ON a.col=b.col
+        INNER JOIN c ON b.col=c.col INNER JOIN d ON c.col=d.col;
+
+    위와 같은 질의를 수행한다면 두번째 **LEADING** 힌트는 무시되며, 테이블 b와 d가 첫번째로 조인되는 조인순서가 생성된다.
 
 MERGE 문에는 다음과 같은 힌트를 사용할 수 있다. 
 
@@ -1165,12 +1442,12 @@ USE, FORCE, IGNORE INDEX 구문은 시스템에 의해 자동적으로 적절한
             CREATE TABLE t (a INT, b INT);
             
             -- IS NULL cannot be used with expressions
-            CREATE INDEX idx ON t (a) WHERE (not a) IS NULL;
+            CREATE INDEX idx ON ta (a) WHERE (not ta.a<>0 ) IS NULL;
 
         ::
         
             ERROR: before ' ; '
-            Invalid filter expression (( not t.a<>0) is null ) for index.
+            Invalid filter expression (( not [dba.ta].a<>0) is null ) for index.
              
         .. code-block:: sql
 
@@ -1386,6 +1663,40 @@ USE, FORCE, IGNORE INDEX 구문은 시스템에 의해 자동적으로 적절한
     =======================================
                 1            2            3
                 4            5            6
+
+
+다음의 예는 커버링 인덱스 사용시 **SELECT** 리스트에 **COUNT(*)** 만 있는 경우 불필요한 스캔을 줄여주는 최적화를 보여준다.
+
+.. code-block:: sql
+
+    -- insert dummy data
+    INSERT INTO t select rownum % 8, rownum % 100, rownum % 1000 FROM dual connect by level <= 40000;
+    
+    -- csql> ;trace on
+    
+    -- count(*) optimization
+    SELECT count(*) FROM t WHERE col1 < 9;
+    
+::
+    
+    Trace Statistics:
+      SELECT (time: 1, fetch: 66, fetch_time: 0, ioread: 0)
+        SCAN (index: dba.t.i_t_col1_col2_col3), (btree time: 1, fetch: 65, ioread: 0, readkeys: 1002, filteredkeys: 0, rows: 0, covered: true, count_only: true)
+
+.. code-block:: sql
+
+    -- no count(*) optimization
+    SELECT count(col1) FROM t WHERE col1 < 9;
+    
+::
+    
+    Trace Statistics:
+      SELECT (time: 13, fetch: 180, fetch_time: 0, ioread: 0)
+        SCAN (index: dba.t.i_t_col1_col2_col3), (btree time: 8, fetch: 179, ioread: 0, readkeys: 1002, filteredkeys: 0, rows: 40002, covered: true)
+
+.. note::
+
+    커버링 인덱스 사용시 단일 질의의 **COUNT(*)** 최적화는 CUBRID 11.2 부터 지원되고, 조인 테이블에 대한 **COUNT(*)** 최적화는 CUBRID 11.3 부터 지원된다.
 
 .. warning::
 
@@ -2442,17 +2753,65 @@ SORT-LIMIT 최적화는 **ORDER BY** 절과 LIMIT 절을 명시한 질의에 적
 
 .. _join-elimination-optimization:
 
-조인 제거 최적화
+조인 변환 최적화
 ----------------
 
-조인 제거 최적화는 쿼리 결과에 영향을 주지 않는 테이블과의 조인을 제거하여 조인 연산을 줄이고, 쿼리 성능을 향상시키는 방법이다.
+조인 최적화는 질의 결과에 영향을 주지 않는 테이블과의 조인을 변경하여 조인 연산을 줄이고, 질의 성능을 향상시키는 방법이다.
 
-조인 제거 최적화에는 두 가지 동작이 있다:
+조인 최적화는 아래와 같은 동작이 있다:
 
+    #. **OUTER JOIN** 을 **INNER JOIN** 으로 변환
     #. **INNER JOIN** 제거
     #. **LEFT OUTER JOIN** 제거
 
-조인 제거 최적화를 하지 않으려면 **NO_ELIMINATE_JOIN** 힌트를 사용해야 한다.
+조인 제거와 관련된 최적화를 하지 않으려면 **NO_ELIMINATE_JOIN** 힌트를 사용해야 한다.
+
+.. _transform-outer-inner:
+
+**OUTER JOIN**\을 **INNER JOIN**\으로 변환
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**OUTER JOIN**\은 조인순서가 선행 테이블과 후행 테이블로 이미 정해져 있어 조인 순서 최적화시 순서가 제한된다. **CUBRID**\는 성능을 위하여 후행 테이블에 **NULL** 불가한 조회 조건이 있는 경우 **OUTER JOIN**\을 **INNER JOIN**\으로 변환한다. **NULL** 가능한 조회 조건은 이 변환에서 제외되며, 아래 조건을 만족해야 한다.
+    
+    #. **ON**\절에 조건절이 작성된 경우
+    #. **NULL** 변환 함수 (**COALESCE (), NVL (), NVL2 (), DECODE (), IF (), IFNULL (), CONCAT_WS ()**)
+    #. **IS NULL, CASE** 문
+
+다음은 **OUTER JOIN**\을 **INNER JOIN**\으로 변환하는 예제이다.
+
+.. code-block:: sql
+
+    --create table
+    CREATE TABLE t1 (col1 int, col2 int);
+    INSERT INTO t1 values (1,1),(2,2),(3,2);
+     
+    -- csql> ;plan simple
+    SELECT /*+ recompile */ *
+    FROM t1 a LEFT OUTER JOIN t1 b on a.col1 = b.col2
+    WHERE b.col1 = 2;
+    
+::
+    
+    Query Plan:
+      NESTED LOOPS (inner join)
+        TABLE SCAN (a)
+        TABLE SCAN (b)
+
+다음은 **NULL** 가능한 조회조건 때문에 **INNER JOIN**\으로 변환되지 않는 예제이다.
+
+.. code-block:: sql
+
+    -- csql> ;plan simple
+    SELECT /*+ recompile */ *
+    FROM t1 a LEFT OUTER JOIN t1 b on a.col1 = b.col2
+    WHERE nvl(b.col1,2) = 2;
+    
+::
+    
+    Query Plan:
+      NESTED LOOPS (left outer join)
+        TABLE SCAN (a)
+        TABLE SCAN (b)
 
 .. _eliminate-inner-join:
 
@@ -3972,7 +4331,25 @@ View Merging 최적화
         FROM (SELECT gender, rownum FROM athlete WHERE rownum < 15) a
         WHERE gender = 'M';
 
-뷰에 **ROWNUM, LIMIT**\ 또는 **GROUPBY_NUM (), INST_NUM (), ORDERBY_NUM ()**\을 사용한 질의문의 경우 **View Merging**\이 불가능하다.
+뷰에 **ROWNUM, LIMIT**\ 또는 **GROUPBY_NUM (), INST_NUM (), ORDERBY_NUM ()**\을 사용한 질의문의 경우 **View Merging**\이 불가능하다. 하지만 부분범위 처리를 위해 **ROWNUM**\을 사용하는 경우 **ROWNUM** 등이 있더라도 **View Merging** 을 수행한다. 아래 두가지 조건을 만족하는 경우이다.
+
+    #. **WHERE** 절에 **ROWNUM**\을 포함한 조회조건만 있다.
+    #. **FROM** 절에 한개의 부질의만 있다.
+
+.. code-block:: sql
+
+        --csql> ;plan detail
+        SELECT *
+        FROM (SELECT name, rownum rn
+                FROM (SELECT name FROM athlete WHERE nation_code = 'KOR') a
+               WHERE rownum < 15) b
+        WHERE rn > 5;
+
+::
+
+    Query stmt:
+     
+    select b.[name], (rownum) from athlete b where ((rownum)> ?:0  and (rownum)< ?:1 ) and (b.nation_code= ?:2 )
 
 다음은 **Correlated Subquery**\ 를 사용하여 작성된 예시이다
 
@@ -3994,6 +4371,26 @@ View Merging 최적화
         WHERE a.code = b.athlete_code;
 
 뷰가 **RANDOM (), DRANDOM (), SYS_GUID ()**\를 포함한 질의문의 경우 **View Merging**\이 불가능하다.
+
+**View Merging** 최적화를 수행할 수 없는 경우, **CUBRID**\는 부질의의 **SELECT-LIST** 항목을 최적화 한다. 다음은 부질의의 **SELECT-LIST**\가 어떻게 최적화 되는지 보여주는 예제이다.
+
+.. code-block:: sql
+
+    --csql> ;plan detail
+    SELECT /*+ recompile */ aa.host_year, aa.rn
+    FROM (select host_year,
+                (select name from event where code = a.event_code) event_name,
+                (select name from athlete where code = a.athlete_code) athlete_name,
+                rownum rn
+         from game a
+         where medal = 'G') aa
+    WHERE host_year = '2004';
+
+::
+
+    Query stmt:
+     
+    select aa.host_year, aa.rn from (select a.host_year, (rownum) as [rn] from game a where a.medal= ?:1 ) aa (host_year, rn) where aa.host_year= ?:0
 
 .. _pred-push:
 
@@ -4028,6 +4425,29 @@ Predicate Push
         SELECT a.name, r.score 
         FROM (SELECT name, nation_code, code, count(*) cnt FROM athlete WHERE nation_code = 'KOR' GROUP BY name, nation_code ) a, record r
         WHERE a.code = r.athlete_code;
+
+아래는 여러개의 부질의가 있는 상황에서 **Predicate Push**\가 어떻게 동작하는지 보여주는 예시이다.
+
+.. code-block:: sql
+
+    --csql> ;plan detail
+    SELECT a.host_year
+    FROM (select distinct host_year, event_code, athlete_code from game where host_year = 2004) a,
+         (select distinct host_year, event_code, athlete_code from game where event_code = 20021) b
+    WHERE a.host_year = b.host_year
+    AND a.event_code = b.event_code
+    AND a.athlete_code = b.athlete_code;
+
+::
+
+    Query stmt:
+     
+    select a.host_year
+     from (select distinct game.host_year, game.event_code, game.athlete_code from game game where game.host_year= ?:0  and game.event_code=20021) a (host_year, event_code, athlete_code),
+          (select distinct game.host_year, game.event_code, game.athlete_code from game game where game.event_code= ?:1  and game.host_year=2004) b (host_year, event_code, athlete_code)
+    where a.athlete_code=b.athlete_code and a.host_year=b.host_year and a.event_code=b.event_code
+
+조회조건 **game.event_code=20021** 와 **game.host_year=2004** 가 주질의의 조인조건에 의해서 각각의 부질의에 추가된다.
 
 다음의 경우에는 **Predicate Push**\가 수행되지 않는다.
 
@@ -4084,6 +4504,70 @@ Predicate Push
         WHERE NVL(r.score, '0') = '0';
 
 **OUTER JOIN**\을 수행할 때 푸시될 조건절이나 뷰 내부의 **Predicate Push** 대상에 **NULL** 변환 함수를 사용한 경우 **Predicate Push** 대상이 아니다.
+
+.. _subquery_unnest:
+
+부질의 중첩 제거
+-------------------------
+**부질의 중첩 제거**\는 **WHERE** 절의 부질의를 매번 수행하여 필터하는 방식에서 동일한 결과를 보장하는 조인방식으로 변환하여 성능을 개선한다. **WHERE** 절의 부질의는 연산자에 따라서 다른 성질을 가질 수 있으며, 연산자 **IN**\이나 **EXISTS** 처럼 여러 행을 결과로 가질 수 있는 부질의가 최적화 대상이다. **CUBRID**\는 **IN** 연산자에 대해서만 부분적으로 지원한다.
+
+아래는 IN 연산자에 대해서 조인 질의로 변환하는 예시이다.
+
+.. code-block:: sql
+
+    --csql> set optimization level 513;
+    SELECT game_date
+      FROM game
+     WHERE (host_year,event_code,athlete_code) IN (select host_year,event_code,athlete_code
+                                                     from game
+                                                    where nation_code = 'KOR' and medal = 'G');
+
+::
+
+    Query plan:
+     
+    idx-join (inner join)
+        outer: sscan
+                   class: av1861 node[1]
+                   cost:  1 card 25
+        inner: iscan
+                   class: game node[0]
+                   index: pk_game_host_year_event_code_athlete_code term[0] AND term[1] AND term[2]
+                   cost:  3 card 8653
+        cost:  17 card 1
+     
+    Query stmt:
+     
+    select game.game_date from game game, (select distinct game.host_year, game.event_code, game.athlete_code from game game where game.medal= ?:0  and game.nation_code= ?:1 ) av1861 (av_1, av_2, av_3) where game.host_year=av1861.av_1 and game.event_code=av1861.av_2 and game.athlete_code=av1861.av_3
+
+.. note::
+
+    CUBRID 11.0 부터 **IN** 연산자의 인자에 여러개의 컬럼을 조회하는 부질의가 허용 된다.
+
+.. _predicate_transitivity:
+
+조건절 이행
+-------------------------
+**조건절 이행**\은 논리적으로 생성될 수 있는 조건절을 추가 함으로써 질의 성능을 개선한다.
+
+아래는 **조건절 이행** 최적화로 **b.col1 = 3** 조회 조건이 추가된 예시이다.
+
+.. code-block:: sql
+
+    CREATE TABLE t1 (col1 int, col2 int, col3 int);
+    CREATE TABLE t2 (col1 int, col2 int, col3 int);
+     
+    --csql> ;plan detail
+    SELECT /*+ recompile */ *
+    FROM t1 a, t2 b
+    WHERE a.col1 = b.col1
+    AND a.col1 = 3;
+
+::
+
+    Query stmt:
+     
+    select a.col1, a.col2, a.col3, b.col1, b.col2, b.col3 from t1 a, t2 b where b.col1= ?:0  and a.col1= ?:1  and a.col1=b.col1
 
 .. _query-cache:
 
@@ -4160,4 +4644,218 @@ Predicate Push
       deletion_marker = false
     }
 
+캐시 된 질의는 결과 화면 중간에 **query_string** 으로 표시되며 각 **n_entries** 및 **n_pages** 는 캐시된 질의 수와 캐시 된 결과의 페이지 수를 나타낸다. **n_entries** 는 파라미터 **max_QUERY_CACHE_entries** 의 값으로 제한되고 **n_pages** 는 **QUERY_CACHE_size_in_pages** 의 값으로 제한된다. **n_entries** 가 초과하거나 **n_pages** 가 초과하면 캐시 항목 중 일부가 삭제될 후보로 선택되어 삭제되고, 삭제되는 캐시는 **max_QUERY_CACHE_entries** 값과 **QUERY_CACHE_size_in_pages** 값의 약 20%이다.
+
+11.4 버전부터는 부질의 대상으로 QUERY_CACHE 힌트를 사용할 수 있으며, 힌트를 사용할 수 있는 부질의는 아래와 같다.
+
+1) CTE 쿼리
+WITH절에 포함되는 비재귀적 부분에 QUERY_CACHE 힌트를 지정한 경우
+
+.. code-block:: sql
+
+        WITH
+         of_drones AS (SELECT /*+ QUERY_CACHE */ item, 'drones' FROM products WHERE parent_id = 1),
+         of_cars AS (SELECT /*+ QUERY_CACHE */ item, 'cars' FROM products WHERE parent_id = 5)
+        SELECT * FROM of_drones UNION ALL SELECT * FROM of_cars ORDER BY 1;
+
+WITH절에 포함되는 재귀 부분 중 다른 CTE를 참조하는 부질의에 QUERY_CACHE 힌트를 지정한 경우
+
+.. code-block:: sql
+
+        WITH
+         RECURSIVE cars (id, parent_id, item, price) AS (
+                            SELECT /*+ QUERY_CACHE */ id, parent_id, item, price
+                                FROM products WHERE item LIKE 'Car%'
+                            UNION ALL
+                            SELECT /*+ QUERY_CACHE */ p.id, p.parent_id, p.item, p.price
+                                FROM products p
+                            INNER JOIN cars rec_cars ON p.parent_id = rec_cars.id)
+        SELECT item, price FROM cars ORDER BY 1;
+
+위 UNION 쿼리에서 첫 번째 쿼리는 캐시 되지만, 두 번째 쿼리는 다른 테이블을 참조하기 때문에 캐시 되지 않는다.
+
+2) 다른 테이블을 참조하지 않는 부질의에 QUERY_CACHE 힌트를 지정한 경우
+
+.. code-block:: sql
+
+        SELECT h.host_year, (SELECT /*+ QUERY_CACHE */ host_nation FROM olympic o WHERE o.host_year > 1994 limit 1) AS host_nation,
+               h.event_code, h.score, h.unit
+        FROM history h;
+
+        SELECT name, capital, list(SELECT /*+ QUERY_CACHE */ host_city FROM olympic WHERE host_nation like 'K%') AS host_cities
+        FROM nation;
+
+단, 아래와 같이 부질의 내에서 다른 테이블을 참조하는 경우에는 QUERY_CACHE 힌트를 지정해도 캐시 되지 않는다.
+
+.. code-block:: sql
+
+        SELECT h.host_year, (SELECT /*+ QUERY_CACHE */ host_nation FROM olympic o WHERE o.host_year=h.host_year) AS host_nation,
+               h.event_code, h.score, h.unit
+        FROM history h;
+
+        SELECT name, capital, list(SELECT /*+ QUERY_CACHE */ host_city FROM olympic WHERE host_nation = name) AS host_cities
+        FROM nation;
+
 캐시 된 질의는 결과 화면 중간에 **query_string** 으로 표시되며 각 **n_entries** 및 **n_pages** 는 캐시된 질의 수와 캐시 된 결과의 페이지 수를 나타낸다. **n_entries** 는 파라미터 **max_query_cache_entries** 의 값으로 제한되고 **n_pages** 는 **query_cache_size_in_pages** 의 값으로 제한된다. **n_entries** 가 초과되거나 **n_pages** 가 초과되면 캐시 항목 중 일부가 삭제될 후보로 선택되어 삭제되고, 삭제되는 캐시는 **max_query_cache_entries** 값과 **query_cache_size_in_pages** 값의 약 20% 이다.
+
+.. _correlated-subquery-cache:
+
+서브 쿼리 캐시 (correlated)
+------------------------------------
+
+서브 쿼리 캐시 최적화는 상관 부질의(correlated subquery)를 포함한 질의 성능을 향상시키는데 사용할 수 있으며, 부질의 결과는 부질의마다 독립적인 공간에 캐시된다. 
+서브 쿼리 캐시 최적화는 기본적으로 적용되므로 질의 수행시 캐시를 사용하지 않으려면 **NO_SUBQUERY_CACHE** 힌트를 해당 부질의에 사용해야 한다.
+
+서브 쿼리 캐시 최적화는 상관 부질의가 SELECT 절에 있는 경우 적용되며, 처리 절차는 다음과 같다. 
+재 실행되는 상관 부질의의 검색 조건 컬럼 값이 동일한 경우 부질의 수행 대신 캐시된 결과를 사용한다.
+만약, 캐시된 값을 찾을 수 없는 경우 부질의 수행 후 참조한 컬럼 값과 결과를 서브 쿼리 캐시에 저장한다. 
+
+:ref:`질의 프로파일링 <query-profiling>` 요청과 함께 질의 수행시 서브 쿼리 캐시 최적화가 적용된 부질의의 하위 정보로 서브 쿼리 캐시에 대한 프로파일링 정보가 출력된다.
+
+다음은 상관 부질의 수행시 서브 쿼리 캐시 프로파일링 정보가 표시되는 예시이다
+
+::
+
+    csql> SELECT /*+ RECOMPILE NO_MERGE */
+            (SELECT t1_pk FROM t1 b WHERE b.t1_pk = a.c3)
+          FROM t1 a
+          WHERE a.c2 >= 1;
+
+    Trace Statistics:
+      SELECT (time: 108, fetch: 103639, fetch_time: 13, ioread: 0)
+        SCAN (table: dba.t1), (heap time: 70, fetch: 100384, ioread: 0, readrows: 100000, rows: 99000)
+        SUBQUERY (correlated)
+          SELECT (time: 4, fetch: 2970, fetch_time: 0, ioread: 0)
+            SCAN (index: dba.t1.pk_t1), (btree time: 2, fetch: 1980, ioread: 0, readkeys: 990, filteredkeys: 0, rows: 990, covered: true)
+            SUBQUERY_CACHE (hit: 98010, miss: 990, size: 269384, status: enabled)
+
+서브 쿼리 캐시의 프로파일링 항목에 대한 설명은 다음과 같다.
+
+* **hit** : 질의 실행 대신 캐시된 영역에서 결과를 가져온 횟수.
+* **miss** : 질의를 실행한 후 결과를 캐시한 횟수.
+* **size** : 서브 쿼리 캐시에 사용된 메모리 크기.
+* **status** : 질의 종료 시 서브 쿼리 캐시의 활성화 여부.
+
+**size**\가 설정해둔 값을 초과하는 경우에는 서브 쿼리 캐시가 질의 수행 도중 비활성화 되며 SQL 트레이스 정보에서 **status**\가 disabled로 출력된다. 또한, **miss**/**hit** 가 9 이상일 경우, 서브 쿼리 캐시의 메모리 크기가 설정해둔 값을 초과하지 않더라도 캐시 miss가 높다고 판단해서 질의 수행 도중 캐시가 비활성화 될 수 있다. 
+
+다음은 서브 쿼리 캐시의 사용 유무에 따른 성능 차이를 확인하기 위해 반복 수행되는 상관 부질의 결과를 count하는 예제 질의이다.
+다음은 예제 질의를 수행하기 위한 데이터를 준비하는 질의이다. 
+
+::
+    
+    # Prepare data
+    csql> DROP TABLE IF EXISTS t1;
+    
+    csql> CREATE TABLE t1 AS
+            SELECT
+                    ROWNUM AS t1_pk,
+                    MOD(ROWNUM, 10) AS c1,
+                    MOD(ROWNUM, 100) AS c2,
+                    MOD(ROWNUM, 1000) AS c3
+            FROM 
+                    db_class a, db_class b, db_class c, db_class d, db_class e, db_class f
+            LIMIT 100000;
+    
+    csql> ALTER TABLE t1 ADD CONSTRAINT PRIMARY KEY pk_t1 (t1_pk);
+
+    csql> CREATE TABLE t2 AS
+            SELECT
+                    ROWNUM as c1,
+                    1 as c2,
+                    TO_CHAR(ROWNUM * 1000, '0999') as code
+            FROM 
+                    db_class a, db_class b
+            LIMIT 10;
+    
+    csql> update statistics on t1 with fullscan;
+    
+    csql> ;trace on  
+
+질의 #1는 서브 쿼리 캐시 최적화를 사용하여 질의를 수행했고, 질의 #2는  **NO_SUBQUERY_CACHE** 힌트를 사용하여 서브 쿼리 캐시를 비 활성화하여 질의를 수행했다. 
+두 질의의 결과를 비교해보면 서브 쿼리 캐시 최적화를 사용한 것이 응답 수행이 개선된 것을 확인할 수 있다. 
+
++------------------------------------------------------------------------+------------------------------------------------------------------------------------------------+
+| **Query #1**                                                           | **Query #2**                                                                                   |
++========================================================================+================================================================================================+
+| ::                                                                     | ::                                                                                             |
+|                                                                        |                                                                                                |
+|     csql> SELECT COUNT(*)                                              |     csql> SELECT COUNT(*)                                                                      |
+|            FROM (                                                      |            FROM (                                                                              |
+|                   SELECT /*+ RECOMPILE NO_MERGE */                     |                   SELECT /*+ RECOMPILE NO_MERGE */                                             |
+|                          (SELECT t1_pk FROM t1 b WHERE b.t1_pk = a.c3) |                         (SELECT /*+ NO_SUBQUERY_CACHE */ t1_pk FROM t1 b WHERE b.t1_pk = a.c3) | 
+|                     FROM t1 a                                          |                     FROM t1 a                                                                  |
+|                    WHERE a.c2 >= 1                                     |                    WHERE a.c2 >= 1                                                             |
+|                 );                                                     |                 );                                                                             |
+|                                                                        |                                                                                                |
+|     === <Result of SELECT Command in Line 2> ===                       |     === <Result of SELECT Command in Line 2> ===                                               |
+|                                                                        |                                                                                                |
+|                  count(*)                                              |                  count(*)                                                                      |
+|     ======================                                             |     ======================                                                                     |
+|                     99000                                              |                     99000                                                                      |
+|                                                                        |                                                                                                |
+|     1 row selected. (0.128251 sec) Committed. (0.000010 sec)           |     1 row selected. (0.626199 sec) Committed. (0.000011 sec)                                   |
+|                                                                        |                                                                                                |
+|     1 command(s) successfully processed.                               |     1 command(s) successfully processed.                                                       |
++------------------------------------------------------------------------+------------------------------------------------------------------------------------------------+
+
+서브 쿼리 캐시는 다음과 같은 상황에 동작하지 않는다:
+
+* 상관 부질의가 상관 부질의를 포함한 경우. (단, 다른 상관 하위 쿼리가 포함되지 않은 최 하단의 상관 부질의는 서브 쿼리 캐시 최적화 작업이 수행됨)
+* 부질의가 단일 행 부질의가 아닌 경우.
+* 부질의가 CONNECT BY 절을 포함한 경우.
+* 부질의에 OID 관련 기능이 포함된 경우.
+* 부질의가 **NO_SUBQUERY_CACHE** 힌트를 포함한 경우.
+* 새로운 결과를 저장할 때 설정한 서브 쿼리 캐시 크기(기본값: 2MB)를 초과하는 경우.
+* random (), sys_guid ()와 같이 실행될 때마다 결과가 바뀌는 함수가 포함된 경우.
+
+다음 예시는 상관 부질의가 상관 부질의를 포함한 경우, 최하단의 상관부질의만 서브 쿼리 캐시가 사용되고, 상단의 상관 부질의에는 서브 쿼리 캐시가 적용되지 않는 예시이다. 
+
+::
+    
+    csql> SELECT /*+ recompile */ 
+            (
+                SELECT 
+                    (
+                        SELECT c.code
+                        FROM t2 c
+                        WHERE c.c1 = b.c1
+                    ) 
+                FROM t1 b 
+                WHERE b.t1_pk = a.c1
+            ) s
+            FROM t1 a
+            WHERE a.c3 = 1;
+    
+    Trace Statistics:
+        SELECT (time: 56, fetch: 100785, fetch_time: 10, ioread: 0)
+            SCAN (table: dba.t1), (heap time: 55, fetch: 100384, ioread: 0, readrows: 100000, rows: 100)
+            SUBQUERY (correlated)
+            SELECT (time: 0, fetch: 401, fetch_time: 0, ioread: 0)
+                SCAN (index: dba.t1.pk_t1), (btree time: 0, fetch: 300, ioread: 0, readkeys: 100, filteredkeys: 0, rows: 100) (lookup time: 0, rows: 100)
+                SUBQUERY (correlated)
+                SELECT (time: 0, fetch: 1, fetch_time: 0, ioread: 0)
+                    SCAN (table: dba.t2), (heap time: 0, fetch: 1, ioread: 0, readrows: 10, rows: 1)
+                    SUBQUERY_CACHE (hit: 99, miss: 1, size: 150704, status: enabled)
+
+다음은 상관 부질의에 random () 와 같이 실행될 때마다 결과가 바뀌는 함수가 포함된 경우 서브 쿼리 캐시가 비활성화되는 예시이다.
+
+::
+
+    csql> WITH cte_1 AS 
+            (SELECT
+                DISTINCT (SELECT random(1) FROM t2 b WHERE b.c1 = a.c1 AND b.c2 = 1) v
+                FROM t1 a
+                WHERE a.c2 = 1
+            ) SELECT count(*) FROM cte_1;
+    
+    Trace Statistics:
+        SELECT (time: 65, fetch: 101384, fetch_time: 9, ioread: 0)
+            SCAN (temp time: 0, fetch: 0, ioread: 0, readrows: 1000, rows: 1000)
+            SUBQUERY (uncorrelated)
+            CTE (non_recursive_part)
+                SELECT (time: 65, fetch: 101384, fetch_time: 9, ioread: 0)
+                SCAN (table: dba.t1), (heap time: 59, fetch: 100384, ioread: 0, readrows: 100000, rows: 1000)
+                ORDERBY (time: 0, sort: true, page: 0, ioread: 0)
+                SUBQUERY (correlated)
+                    SELECT (time: 4, fetch: 1000, fetch_time: 0, ioread: 0)
+                    SCAN (table: dba.t2), (heap time: 3, fetch: 1000, ioread: 0, readrows: 10000, rows: 1000)

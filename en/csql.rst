@@ -1,4 +1,4 @@
-
+A value that specifies the optimization level. It has the following meanings.
 :meta-keywords: csql, cubrid csql, cubrid commands, executing csql, csql options
 :meta-description: CUBRID CSQL is an application that allows users to use SQL statements through a command-driven interface. This section briefly explains how to use the CSQL Interpreter and associated commands.
 
@@ -341,7 +341,8 @@ Session Commands
 
 In addition to SQL statements, CSQL Interpreter provides special commands allowing you to control the Interpreter. These commands are called session commands. All the session commands must start with a semicolon (;).
 
-Enter the **;help** command to display a list of the session commands available in the CSQL Interpreter. Note that only the uppercase letters of each session command are required to make the CSQL Interpreter to recognize it. Session commands are not case-sensitive.
+Enter the **;help** command to display a list of the session commands available in the CSQL Interpreter.
+You don't need to type the full session command; the CSQL Interpreter recognizes commands as long as you input the minimum number of characters needed to uniquely identify the command from others. Session commands are not case-sensitive.
 
 "Query buffer" is a buffer to store the query before running it. If you run CSQL as giving the **\-\-no-single-line** option, the query string is kept on the buffer until running **;xr** command.
 
@@ -581,9 +582,9 @@ You can check the parameter value currently set in the CSQL Interpreter using th
     === Get Param Input ===
     isolation_level="tran_rep_class_commit_instance"
 
-**Setting the parameter value (;SEt)**
+**Setting the parameter value (;SET)**
 
-You can use the **;Set** session command to set a specific parameter value. Note that changeable parameter values are only can be changed. To change the server parameter values, you must have DBA authorization. For information on list of changeable parameters, see :ref:`broker-configuration`. ::
+You can use the **;SET** session command to set a specific parameter value. Note that changeable parameter values are only can be changed. To change the server parameter values, you must have DBA authorization. For information on list of changeable parameters, see :ref:`broker-configuration`. ::
 
     csql> ;set block_ddl_statement=1
     === Set Param Input ===
@@ -633,9 +634,11 @@ If you don't give a value after **;COL** command, it shows the current setting l
 
 You can use the **;PLan** session command to set the view level of executing query plan the level is composed of **simple**, **detail**, and **off**. Each command refers to the following:
 
-*   **off**: Not displaying the query execution plan
+*   **off**: Not displaying the query execution plan (OPT LEVEL=1)
 *   **simple**: Displaying the query execution plan in simple version (OPT LEVEL=257)
 *   **detail**: Displaying the query execution plan in detailed version (OPT LEVEL=513)
+
+For more information. see :ref:`viewing-query-plan`.
 
 .. _set-autotrace:
  
@@ -1430,7 +1433,7 @@ This command specifies the formatter to be used with **;EDIT** session command. 
 
         The use of Free SQL Formatter is recommended.
 
-        Download URL: https://github.com/CUBRID/fsqlf/releases/download/v.1.1.0-csql/fsqlf-1.1.0.csql.tar.gz
+        Download URL: https://github.com/CUBRID/fsqlf/releases
 
 **Specifying the editor (;EDITOR_Cmd)**
 

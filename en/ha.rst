@@ -369,14 +369,14 @@ Execute the **cubrid heartbeat** **start** at each node in the CUBRID HA group. 
 
 Execute **cubrid heartbeat status** at each node in the CUBRID HA group to verify its configuration status. ::
 
-    [nodeA]$ cubrid heartbeat status
+    [cubrid@nodeA]$ cubrid heartbeat status
     @ cubrid heartbeat list
-     HA-Node Info (current nodeA-node-name, state master)
+     HA-Node Info (current nodeA, state master)
        Node nodeB-node-name (priority 2, state slave)
        Node nodeA-node-name (priority 1, state master)
      HA-Process Info (nodeA 9289, state nodeA)
-       Applylogdb testdb@localhost:/home1/cubrid1/DB/testdb_nodeB.cub (pid 9423, state registered)
-       Copylogdb testdb@nodeB-node-name:/home1/cubrid1/DB/testdb_nodeB.cub (pid 9418, state registered)
+       Applylogdb testdb@localhost:/home1/cubrid1/DB/testdb_nodeB (pid 9423, state registered)
+       Copylogdb testdb@nodeB-node-name:/home1/cubrid1/DB/testdb_nodeB (pid 9418, state registered)
        Server testdb (pid 9306, state registered_and_active)
      
     [nodeA]$
@@ -666,9 +666,14 @@ For details, see :ref:`log-multiplexing`.
 
 **ha_copy_log_base**
 
-**ha_copy_log_base** is a parameter used to configure the location of storing the transaction log copy. The default is **$CUBRID_DATABASES**/\ *<db_name>*\_\ *<host_name>*.
+Specifies the parent path for saving replication logs. The default value is the directory path set in the $CUBRID_DATABASES environment variable.
+Replication logs are stored in a subdirectory of <db_name>_<host_name>, depending on the server and database name.
 
-For details, see :ref:`log-multiplexing`.
+The replication log path can be set to either a relative or absolute path.
+The following are examples of each setting.
+
+ex1) ha_copy_log_base=copylog: Considered a relative path and stores replication logs in $CUBRID_DATABASES/copylog.
+ex2) ha_copy_log_base=/log/copy_log: Saves replication logs in /log/copy_log as an absolute path.
 
 .. _ha_copy_log_max_archives:
 
@@ -791,6 +796,7 @@ The default is **no**.
 The format of this log file name is *<db name>_<master hostname>*\ **.sql.log.**\ *<id>*, and *<id>* starts from 0.
 If this size is over **ha_sql_log_max_size_in_mbytes**, a new file with "*<id>* + 1" is created.
 For example, if "ha_sql_log_max_size_in_mbytes=100", demodb_nodeA.sql.log.1 is newly created as the size of demodb_nodeA.sql.log.0 file becomes 100MB.
+*<id>* will wrap around to 0 once it exceeds the maximum value (4,294,967,295).
 
 By default, only two latest SQL log files are maintained, and the maximum number of them can be adjusted through **ha_sql_log_max_count**.
 
@@ -1393,6 +1399,55 @@ This utility is used to output the information of CUBRID HA group and CUBRID HA 
        Copylogdb testdb@nodeA:/home/cubrid/DB/testdb_nodeA (pid 2505, state registered)
        Server testdb (pid 2393, state registered_and_standby)
 
+The -v option displays detailed information about the node.
+* score: Indicates the priority of the node, with a lower score indicating a higher priority.
+* missed heartbeat: Indicates the loss rate of heartbeat signals sent between nodes configured in a HA environment. If this value is unusually high, the configuration, network, or firewall settings should be inspected.
+
+The event occurrence times for the Applylogdb, Copylogdb, and Server processes are also displayed. If no event has occurred, it is displayed as "00:00:00.000."
+* registered-time: The time when a process startup request was made via a user command.
+* deregistered-time: The time when a remote process stop request was made via a user command (applicable only to copylogdb and applylogdb).
+* shutdown-time : The time that HA-manager(cub_master) stopped the process
+* start-time : The time that HA-manager(cub_master) restarted the process
+
+**Example**
+
+::
+
+    $ cubrid heartbeat status -v
+    @ cubrid heartbeat status
+
+    HA-Node Info (current cubrid1, state master)
+      Node cubrid2 (priority 2, state slave)
+        - score 2
+        - missed heartbeat 0
+      Node cubrid1 (priority 1, state master)
+        - score -32767
+        - missed heartbeat 0
+
+    HA-Process Info (master 7392, state master)
+    Copylogdb testdb@cubrid2:/home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/databases/testdb_cubrid2 (pid 7841, state registered)
+     - exec-path [/home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/bin/cub_admin]
+     - argv      [cub_admin copylogdb -L /home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/databases/testdb_cubrid2 -m sync testdb@bagus2 ]
+     - registered-time   08/26/24 14:28:37.019
+     - deregistered-time 00/00/00 00:00:00.000
+     - shutdown-time     08/26/24 14:28:35.010
+     - start-time        08/26/24 14:28:36.012
+    Applylogdb testdb@localhost:/home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/databases/testdb_cubrid2 (pid 7746, state registered)
+     - exec-path [/home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/bin/cub_admin]
+     - argv      [cub_admin applylogdb -L /home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/databases/testdb_cubrid2 --max-mem-size=300 testdb@localhost ]
+      - registered-time   08/26/24 14:27:14.566
+      - deregistered-time 00/00/00 00:00:00.000
+      - shutdown-time     08/26/24 14:27:12.552
+      - start-time        08/26/24 14:27:13.558
+     Server testdb (pid 7904, state registered_and_active)
+      - exec-path [/home/cubha/CUBRID-11.3.1.1142-bee7aa8-Linux.x86_64/bin/cub_server]
+      - argv      [cub_server testdb ]
+      - registered-time   08/26/24 14:29:28.955
+      - deregistered-time 00/00/00 00:00:00.000
+      - shutdown-time     08/26/24 14:29:27.593
+      - start-time        08/26/24 14:29:28.594
+
+
 .. note:: **act**, **deact**, and **deregister** commands which were used in versions lower than CUBRID 9.0 are no longer used.
 
 .. _cubrid-service-util:
@@ -1467,13 +1522,14 @@ The following example shows how to check log information (Active Info.) of the m
 
 *   Applied Info.: Shows the status information after the slave node applies the replication log.
 *   Copied Active Info.: Shows the status information after the slave node copies the replication log.
+*   Copied Archive Info. : Shows the status information after the slave node copies the archive log.
 *   Active Info.: Shows the status information after the master node records the transaction log.
 *   Delay in Copying Active Log: Shows the status information which the transaction logs' copy is delayed.
 *   Delay in Applying Copied Log: Shows the status information which the transaction logs' application is delayed.
 
 ::
 
-    [nodeB] $ cubrid applyinfo -L /home/cubrid/DB/testdb_nodeA -r nodeA -a -i 3 testdb
+    [nodeB] $ cubrid applyinfo -L /home/cubrid/DB/testdb_nodeA -r nodeA -a -p 0 -i 3 testdb
      
      *** Applied Info. *** 
     Insert count                   : 289492
@@ -1486,13 +1542,27 @@ The following example shows how to check log information (Active Info.) of the m
      *** Copied Active Info. *** 
     DB name                        : testdb
     DB creation time               : 04:29:00.000 PM 11/04/2012 (1352014140)
+    Vol creation time              : 04:29:10.000 PM 11/04/2012 (1352014150)
     EOF LSA                        : 27722 | 10088
     Append LSA                     : 27722 | 10088
     HA server state                : active
 
+     *** Copied Archive Info. ***
+    DB name                        : testdb
+    DB creation time               : 04:29:00.000 PM 11/04/2012 (1352014140)
+    Vol creation time              : 04:29:20.000 PM 11/04/2012 (1352014160)
+    Archive number                 : 0
+    Log page 0 (phy: 1 pageid: 0, offset 0)
+    offset:0000 (tid:1 bck p:-1,o:-1 frw p:0,o:96 type:3)
+    offset:0096 (tid:1 bck p:0,o:0 frw p:0,o:320 type:5)
+    offset:0320 (tid:1 bck p:0,o:96 frw p:0,o:552 type:4)
+    offset:0552 (tid:1 bck p:0,o:320 frw p:0,o:608 type:4)
+    ...
+
      *** Active Info. *** 
     DB name                        : testdb
     DB creation time               : 04:29:00.000 PM 11/04/2012 (1352014140)
+    Vol creation time              : 04:29:10.000 PM 11/04/2012 (1352014150)
     EOF LSA                        : 27726 | 2512
     Append LSA                     : 27726 | 2512
     HA server state                : active
@@ -1521,6 +1591,7 @@ The items shown by each status are as follows:
 
     *   DB name: Name of a target database in which the replication log copy process copies logs
     *   DB creation time: The creation time of a database copied through replication log copy process
+    *   Vol creation time: The creation time of the volume copied through replication log copy process
 
     *   EOF LSA: Information of pageid and offset copied at the last time on the target node by the replication log copy process. There will be a delay in copying logs as much as difference with the EOF LSA value of "Active Info." and with the Append LSA value of "Copied Active Info."
 
@@ -1528,10 +1599,20 @@ The items shown by each status are as follows:
 
     *   HA server state: Status of a database server process which replication log copy process receives logs from. For details on status, see :ref:`ha-server`.
 
+*   Copied Archive Info.
+
+    *   DB name: Name of a target database in which the replication log copy process copies logs
+    *   DB creation time: The creation time of a database copied through replication log copy process
+    *   Vol creation time: The creation time of the volume copied through replication log copy process
+    *   Archive number: The number of archive logs copied through replication log copy process
+    *   Log page: The information of pageid and offset of the archive log copied through replication log copy process.
+    *   offset: The information of pageid and offset of the archive log copied through replication log copy process.
+
 *   Active Info.
 
     *   DB name: Name of a database whose node was configured in the **-r** option.
     *   DB creation time: Database creation time of a node that is configured in the **-r** option.
+    *   Vol creation time: Volume creation time of a node that is configured in the **-r** option.
     *   EOF LSA: The last information of pageid and offset of a database transaction log of a node that is configured in the **-r** option. There will be a delay in copying logs as much as difference between the EOF LSA value of "Copied Active Info." and this value.
     
     *   Append LSA: Information of pageid and offset written at the last time on the disk by the database whose node was configured in the **-r** option.
@@ -3184,13 +3265,14 @@ Now let's see the case of rebuilding a existing slave node during a service in a
             [nodeB]$ rm testdb/log/*
             
             [nodeB]$ rm -rf testdb_nodeA
+            [nodeB]$ rm $CUBRID/var/APPLYLOGDB/testdb
             
     *   Stop log replication processes of *nodeB* on *nodeA* and *nodeC*.
     
         ::
         
-            [nodeA]$ cubrid heartbeat repl stop testdb nodeB
-            [nodeC]$ cubrid heartbeat repl stop testdb nodeB
+            [nodeA]$ cubrid heartbeat repl stop nodeB
+            [nodeC]$ cubrid heartbeat repl stop nodeB
     
     *   Remove replication logs for *nodeB* from *nodeA* and *nodeC*.
     
@@ -3199,18 +3281,9 @@ Now let's see the case of rebuilding a existing slave node during a service in a
             [nodeA]$ rm -rf $CUBRID_DATABASES/testdb_nodeB
             [nodeC]$ rm -rf $CUBRID_DATABASES/testdb_nodeB
 
-2.  Remove HA catalog table's data, restore *nodeB*'s database from *nodeA*'s backup, and add data to HA catalog table.
+2.  Restore *nodeB*'s database from *nodeA*'s backup, and add data to HA catalog table.
 
-    *   Delete the HA catalog table, db_ha_apply_info's records.
-    
-        Delete all records of db_ha_apply_info of *nodeB* to initialize.
-        
-        ::
-        
-            [nodeB]$ csql --sysadm --write-on-standby -u dba -S testdb 
-            csql> DELETE FROM db_ha_apply_info;
-            
-        Delete db_ha_apply_info data for *nodeB* from *nodeA* and *nodeC*.
+    *    Delete db_ha_apply_info data for *nodeB* from *nodeA* and *nodeC*.
         
         ::
         
@@ -3453,6 +3526,7 @@ Replication mismatch between replication nodes, indicating that data of the mast
          *** Copied Active Info. ***
         DB name                        : testdb
         DB creation time               : 11:28:00.000 AM 12/17/2010  (1292552880)
+        Vol creation time              : 11:28:10.000 AM 12/17/2010  (1292552890)
         EOF LSA                        : 1913 | 2976
         Append LSA                     : 1913 | 2976
         HA server state                : active
@@ -3460,6 +3534,7 @@ Replication mismatch between replication nodes, indicating that data of the mast
          ***  Active Info. ***
         DB name                        : testdb
         DB creation time               : 11:28:00.000 AM 12/17/2010  (1292552880)
+        Vol creation time              : 11:28:10.000 AM 12/17/2010  (1292552890)
         EOF LSA                        : 1913 | 2976
         Append LSA                     : 1913 | 2976
         HA server state                : active
@@ -3482,6 +3557,7 @@ Replication mismatch between replication nodes, indicating that data of the mast
          *** Copied Active Info. ***
         DB name                        : testdb
         DB creation time               : 11:28:00.000 AM 12/17/2010  (1292552880)
+        Vol creation time              : 11:28:10.000 AM 12/17/2010  (1292552890)
         EOF LSA                        : 1913 | 2976
         Append LSA                     : 1913 | 2976
         HA server state                : active
@@ -3942,7 +4018,7 @@ When you rebuild only a slave because the slave is abnormal in the environment o
 For rebuilding replications, the following environment must be the same in master, slave and replica nodes.
 
 *   CUBRID version
-*   Environmental variable (**$CUBRID**, **$CUBRID_DATABASES**, **$LD_LIBRARY_PATH, $PATH**)
+*   Environmental variable (**$CUBRID**, **$CUBRID_DATABASES**, **$LD_LIBRARY_PATH**, **$PATH**, **$CUBRID_TMP**, **$TMPDIR**)
 *   The paths of database volume, log, and replication
 *   Username and password of the Linux server
 *   HA-related parameters except for **ha_mode**, **ha_copy_sync_mode**, **ha_ping_hosts** and **ha_tcp_ping_hosts**

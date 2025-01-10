@@ -2,12 +2,21 @@
 :meta-keywords: cubrid update statistics, cubrid check statistics, query plan, query profiling, sql hint, cubrid index hint, cubrid special index, cubrid using index
 :meta-description: How to optimize query execution in CUBRID database.
 
+.. include:: join_method.inc
+
 Updating Statistics
 ===================
 
 Statistics for tables and indexes enables queries of the database system to process efficiently. Statistics are not updated automatically for DDL statements such as **CREATE INDEX**, **CREATE TABLE** and DML statements such as **INSERT** and **DELETE**. **UPDATE STATISTICS** statement is the only way to update statistics. So it is necessary to update the statistics by **UPDATE STATISTICS** statement(See :ref:`info-stats`).
 
 **UPDATE STATISTICS** statement is recommended to be executed periodically. It is also recommended to execute when a new index is added or when a mass of **INSERT** or **DELETE** statements make the big difference between the statistics and the actual information.
+
+When updating statistics, the execution plan cache related to those statistics is not deleted. The execution plan is regenerated when the following two criteria are met during query execution.
+
+    #. 6 minutes have passed since the execution plan cache creation or regeneration check
+    #. The page size increases or decreases by more than 10 times, and statistics are updated
+
+The user can delete plan cache using the **PLANDUMP** utility. For more information about **PLANDUMP**, see :ref:`plandump`\.
 
 ::
 
@@ -17,7 +26,7 @@ Statistics for tables and indexes enables queries of the database system to proc
   
     UPDATE STATISTICS ON CATALOG CLASSES [WITH FULLSCAN]; 
 
-*   **WITH FULLSCAN**: It updates the statistics with all the data in the specified table. If this is omitted, it updates the statistics with sampling data. The sampling data is 7 pages regardless of total pages of table.
+*   **WITH FULLSCAN**: It updates the statistics with all the data in the specified table. If this is omitted, it updates the statistics with sampling data. The sampling data is 5000 pages regardless of total pages of table.
 
 *   **ALL CLASSES**: If the **ALL CLASSES** keyword is specified, the statistics on all the tables existing in the database are updated.
 
@@ -69,6 +78,10 @@ When starting and ending an update of statistics information, NOTIFICATION messa
 	/* ERROR: before ' ; '
          * Class public.s does not exist. */
 
+.. note::
+
+    From version 11.4 of CUBRID,  **SELECT** authorization is required when executing **UPDATE STATISTICS** statement.
+
 .. _info-stats:
 
 Checking Statistics Information
@@ -87,28 +100,39 @@ The following shows the statistical information of *t1* table in CSQL interprete
 
 .. code-block:: sql
 
-    CREATE TABLE t1 (code INT);
-    INSERT INTO t1 VALUES(1),(2),(3),(4),(5);
-    CREATE INDEX i_t1_code ON t1(code);
+    CREATE TABLE t1 (code INT, name VARCHAR(20));
+    INSERT INTO t1 VALUES(1,'Park'),(2,'Park'),(3,'Joo'),(4,'Joo'),(5,'Song');
+    CREATE INDEX i_t1_code ON t1(code,name);
     UPDATE STATISTICS ON t1;
+    ;info stats t1
 
 ::
 
-    ;info stats t1
     CLASS STATISTICS
     ****************
-     Class name: t1 Timestamp: Mon Mar 14 16:26:40 2011
+     Class name: t1 Timestamp: Thu Dec 19 15:15:10 2024
      Total pages in class heap: 1
      Total objects: 5
-     Number of attributes: 1
-     Attribute: code
-        id: 0
-        Type: DB_TYPE_INTEGER
-        Minimum value: 1
-        Maximum value: 5
+     Number of attributes: 2
+     Attribute: code (integer)
+        Number of Distinct Values: 5
         B+tree statistics:
-            BTID: { 0 , 1049 }
-            Cardinality: 5 (5) , Total pages: 2 , Leaf pages: 1 , Height: 2
+            BTID: { 0 , 5760 }
+            Cardinality: 5 (5,5) , Total pages: 3 , Leaf pages: 1 , Height: 2
+     
+     Attribute: name (character varying)
+        Number of Distinct Values: 3
+
+*   *Timestamp*: The time when the statistics were updated.
+*   *Total pages*: The number of pages in the table.
+*   *Total objects*: The total number of rows in the table.
+*   *Number of Distinct Values*: The number of values, with duplicates removed. The column **code** consists of all different values, so the NDV is 5. If type of the column is **LOB** or **VARCHAR** exceeding 4,000 characters, NDV is not generated. NDV is used to calculate **SELECTIVITY** in the optimizer. For more information, see :ref:`optimizer-principle`\.
+*   B+tree statistics: Index statistics
+
+    *   *B+tree Cardinality*: The number of values from which the accumulated duplicates of the index key values have been removed. In the example above, **(5,5)** matches the index column **(code,name)**. The first **5** is the number of values from which the duplicates of the **code** column have been removed, and the second **5** is the number of values from which the duplicates of the two columns **code,name** have been removed.
+    *   *Total pages*: The total number of index pages.
+    *   *Leaf pages*: The number of pages in the index leaf block.
+    *   *Height*: The height of the B+tree index including the leaf block.
 
 .. _viewing-query-plan:
 
@@ -130,7 +154,7 @@ To view a query plan for a CUBRID SQL query, you can use following methods.
     SET OPTIMIZATION LEVEL opt-level [;]
     GET OPTIMIZATION LEVEL [ { TO | INTO } variable ] [;]
 
-*   *opt-level* : A value that specifies the optimization level. It has the following meanings.
+*   *opt-level* : This value specifies the optimization level and is associated with the following settings. Any other value will result in an error. 
 
     *   0: Does not perform query optimization. The query is executed using the simplest query plan. This value is used only for debugging.
     
@@ -260,6 +284,7 @@ The following show the meaning for each term which is printed as a query plan.
     *   nl-join: Nested loop join
     *   m-join: Sort merge join
     *   idx_join: Nested loop join, and it is a join which uses an index in the inner table as reading rows of the outer table.
+    *   hash-join: Hash join
     
 *   Join type: It is printed as "(inner join)" on the above. The following are the join types which are printed on the query plan.
     
@@ -361,6 +386,228 @@ If you ensure that left table's row number is a lot smaller than the right table
     SELECT /*+ RECOMPILE ORDERED */  DISTINCT h.host_year, o.host_nation
     FROM history h INNER JOIN olympic o ON h.host_year = o.host_year;
 
+You can specify the table order by specifying the **LEADING** hint. Unlike the **ORDERED** hint, it can be specified regardless of the order in which the tables are written.
+
+.. code-block:: sql
+
+    SELECT /*+ RECOMPILE LEADING(o,h) */  DISTINCT h.host_year, o.host_nation
+    FROM history h INNER JOIN olympic o ON h.host_year = o.host_year;
+
+.. _optimizer-principle:
+
+Optimizer Principle
+=====================
+
+**CUBRID**\'s optimizer performs cost-based optimization when generating a query execution plan, and calculates **selectivity** and **expected number of rows and pages** through statistics. Based on this, it calculates the cost and selects the execution plan with the lowest cost.
+
+Selectivity
+--------------
+
+**Selectivity** is the ratio of data to be selected when a specific predicate is evaluated. The optimizer calculates the selectivity for each predicate in the **WHERE** clause. **CUBRID** assumes that the entire data is evenly distributed and calculates the **selectivity** using the **Number of Distinct Value** of statistics.
+
+::
+
+    SELECTIVITY = 1 / Number of Distinct Value
+
+.. code-block:: sql
+
+    CREATE TABLE t1 (code INT, name VARCHAR(20));
+    INSERT INTO t1 VALUES(1,'Park'),(2,'Park'),(3,'Park'),(4,'joo'),(5,'joo'),(5,'joo');
+    CREATE INDEX i_t1_code ON t1(code,name);
+    UPDATE STATISTICS ON t1;
+     
+    ;info stats t1
+
+::
+
+    CLASS STATISTICS
+    ****************
+     Class name: t1 Timestamp: Fri Dec 20 13:07:58 2024
+     Total pages in class heap: 1
+     Total objects: 6
+     Number of attributes: 2
+     Attribute: code (integer)
+        Number of Distinct Values: 5
+        B+tree statistics:
+            BTID: { 0 , 5760 }
+            Cardinality: 5 (5,5) , Total pages: 3 , Leaf pages: 1 , Height: 2
+     
+     Attribute: name (character varying)
+        Number of Distinct Values: 2
+
+.. code-block:: sql
+
+    ;plan detail
+    SELECT /*+ recompile */ * FROM t1 WHERE code = 3 AND name IN ('Song', 'Ham');
+
+::
+
+    Join graph terms:
+    term[0]: [dba.t1].code=3 (sel 0.2)
+    term[1]: [dba.t1].[name] range ('Ham' =  or 'Song' = ) (sel 0.75)
+
+**term[0]: [dba.t1].code=3** The **Number of Distinct Values** of **code** in the statistics is 5, so the selectivity is 1/5 or 0.2.
+**term[1]: [dba.t1].[name] range ('Ham' = or 'Song' = )** performs an **OR** operation on two values of name. Since the **Number of Distinct Values** for **name** is 2, the selectivity for each value is 1/2. Adding the two values and subtracting the intersection gives the calculation **0.5 + 0.5 - (0.5 x 0.5)**, resulting in 0.75.
+
+Expected number of rows
+-----------------------------
+
+The **expected number of rows**  is calculated by multiplying the **selectivity** by the **total number of data rows**.
+
+::
+
+    Number of expected rows = total rows of a table * selectivity
+
+.. code-block:: sql
+
+    ;plan detail
+    SELECT /*+ recompile */ * FROM t1 WHERE name = 'Park';
+
+::
+
+    Join graph nodes:
+    node[0]: dba.t1 dba.t1(6/1)
+    Join graph terms:
+    term[0]: [dba.t1].[name]='Park' (sel 0.5)
+     
+    Query plan:
+     
+    sscan
+        class: t1 node[0]
+        sargs: term[0]
+        cost:  1 card 3
+
+**dba.t1(6/1)** indicates that the total number of rows in the t1 table is 6 and the number of pages is 1. Since the selectivity of **[dba.t1].[name]='Park'** is 0.5, the expected number of rows is 3, which is calculated as **6 x 0.5**. **cost: 1 card 3** in the execution plan indicates that the cost is 1 and the expected number of rows is 3.
+
+Cost of sequential scan
+------------------------
+
+When estimating costs, the optimizer considers two things:
+
+    #. The cost of reading a page
+    #. The CPU cost of repetitive routines
+
+The following example shows how the cost of a sequential scan is calculated.
+
+::
+
+    Page cost = number of pages in table
+    CPU cost = total number of rows in table X CPU weight
+
+.. code-block:: sql
+
+    drop table if exists t1;
+    create table t1 (col1 int, col2 int, col3 int, col4 int);
+    insert into t1 select mod(rownum,2), mod(rownum,4), rownum, rownum from dual connect by level <= 4000;
+    update statistics on t1;
+     
+    ;plan detail
+    select /*+ recompile */ count(*) from t1 where col2 = 2;
+
+::
+
+    Join graph nodes:
+    node[0]: dba.t1 dba.t1(4000/9)
+    Join graph terms:
+    term[0]: [dba.t1].col2=2 (sel 0.25)
+     
+    Query plan:
+     
+    sscan
+        class: t1 node[0]
+        sargs: term[0]
+        cost:  19 card 1000
+
+**node[0]: dba.t1 dba.t1(4000/9)** shows that the total number of rows in the t1 table is 4000 and the number of pages is 9. Therefore, the page cost is 9, which is the total number of pages in the t1 table. The CPU cost is the total number of rows in the table multiplied by the CPU weight, which is **4000 x 0.0025**, resulting in a cost of 10. Adding the two values gives 19, and from **cost: 19 card 1000**, we can see that the cost is 19 and the expected number of rows to be retrieved is 1000.
+
+Cost of index scan
+--------------------
+
+Index scan is performed by searching non-leaf nodes, leaf nodes, and heap areas. The index scan starts by searching non-leaf nodes including the root node to find the starting point of the leaf node. Then, it searches the leaf nodes, looks up the satisfying key, and scans the heap area with the **OID**. The following example shows how the index scan is performed.
+
+.. code-block:: sql
+
+    drop table if exists t2;
+    create table t2 (col1 int, col2 int, col3 int, col4 int);
+    insert into t2 select mod(rownum,20), mod(rownum,80), rownum, rownum from dual connect by level <= 4000;
+    create index idx on t2(col1,col2,col3);
+    update statistics on t2;
+     
+    ;plan detail
+    select /*+ recompile */ count(*) from t2 where col1 = 1 and col3 = 1 and col4 = 1;
+
+::
+
+    Join graph terms:
+    term[0]: [dba.t2].col4=1 (sel 0.00025)
+    term[1]: [dba.t2].col3=1 (sel 0.0125)
+    term[2]: [dba.t2].col1=1 (sel 0.05)
+
+    Query plan:
+     
+    iscan
+        class: t2 node[0]
+        index: idx term[2]
+        filtr: term[1]
+        sargs: term[0]
+        cost:  4 card 1
+
+You can check the predicates in the execution plan through the information in **Join graph terms**. **index: idx term[2]** is the predicate for searching the non-leaf node during the index vertical scan. The **filtr: term[1]** predicate is for filtering the key in the leaf node during the index horizontal scan. When accessing the heap and filtering data, the **sargs: term[0]** predicate is used to filter.
+
+::
+
+    ;info stats t2
+
+::
+
+     Attribute: col1 (integer)
+        Number of Distinct Values: 20
+        B+tree statistics:
+            BTID: { 0 , 5760 }
+            Cardinality: 4000 (20,4000,4000) , Total pages: 11 , Leaf pages: 9 , Height: 2
+
+The cost of an index scan is calculated as follows:
+
+    #. Cost of reading a page = predicted non-leaf node pages accessed + leaf node pages + heap pages
+    #. CPU cost of a repeated routine = predicted number of leaf node keys accessed
+
+The number of pages in a non-leaf node is 1 because the index **Height** of the statistics is 2 and the number of pages to be read excluding the leaf node is **2 - 1**. The number of leaf node pages is obtained by multiplying **Leaf pages** by the selectivity of the predicate **index: idx term[2]** used to search the non-leaf node. Since it is **MAX(9 X 0.05, 1)**, the number of leaf node pages to be read is 1. The number of heap pages to be read is obtained by multiplying the total number of pages in the table by the selectivity of **index** and **filtr** conditions. Here, it is calculated as **MAX(9 X 0.05 X 0.0125, 1)**, so it is calculated that 1 page must be read. Finally, the CPU cost is obtained by multiplying the selectivity of **index: idx term[2]** by the CPU weight from the total number of rows in the table. If you calculate it as **MAX(4000 X 0.05 X 0.0025, 1)**, you get 1, and if you add up all the results so far, you can see that the cost is 4. If you look at **cost: 4 card 1** in the execution plan, you can see that the cost is 4 and the expected number of rows is 1.
+
+Cost of join
+-----------------------
+
+The cost of a join is generated by calculating the cost of the preceding table and the cost of the succeeding table separately, and the cost is calculated according to the join method. The following example below shows how the cost is calculated in a nested loop join method.
+
+.. code-block:: sql
+
+    create index idx1 on t2(col4);
+     
+    --;plan detail
+    select /*+ recompile */ count(*)
+    from t1 a, t2 b
+    where a.col4 = b.col4
+    and b.col1 = 1
+    and b.col3 = 1
+    and a.col2 = 2;
+
+::
+
+    Query plan:
+     
+    idx-join (inner join)
+        outer: sscan
+                   class: a node[0]
+                   sargs: term[3]
+                   cost:  19 card 1000
+        inner: iscan
+                   class: b node[1]
+                   index: idx1 term[0]
+                   sargs: term[1] AND term[2]
+                   cost:  2 card 3
+        cost:  572 card 1
+
+The preceding table is *a* and the succeeding table is *b*. Since the execution of the succeeding table is repeated as many times as the number of rows of the preceding table due to the nature of the nested loop join, the cost of the succeeding table can be calculated by multiplying the variable cost of the *b* table by the expected number of rows of the *a* table. **CUBRID** internally manages fixed costs and variable costs separately, and this information cannot be displayed in the execution plan. The variable cost of the succeeding table is approximately *0.553*, and the cost of the succeeding table incurred during the join is 553 when calculated by *0.553 * 1000*, and the final cost is *572* when adding the cost of the preceding table *19*.
+
 .. _query-profiling:
  
 Query Profiling
@@ -415,7 +662,7 @@ Below is an example that prints out the query tracing result after setting SQL t
       rewritten query: select o.host_year, o.host_nation, o.host_city, sum(p.gold) from OLYMPIC o, PARTICIPANT p where o.host_year=p.host_year and (p.gold> ?:0 ) group by o.host_nation
 
     Trace Statistics:
-      SELECT (time: 1, fetch: 975, ioread: 2)
+      SELECT (time: 2, fetch: 975, fetch_time: 1, ioread: 2)
         SCAN (table: olympic), (heap time: 0, fetch: 26, ioread: 0, readrows: 25, rows: 25)
           SCAN (index: participant.fk_participant_host_year), (btree time: 1, fetch: 941, ioread: 2, readkeys: 5, filteredkeys: 5, rows: 916) (lookup time: 0, rows: 14)
         GROUPBY (time: 0, sort: true, page: 0, ioread: 0, rows: 5)
@@ -423,10 +670,11 @@ Below is an example that prints out the query tracing result after setting SQL t
 
 In the above example, under lines of "Trace Statistics:" are the result of tracing. Each items of tracing result are as below.
 
-*   **SELECT** (time: 1, fetch: 975, ioread: 2)
+*   **SELECT** (time: 2, fetch: 975, fetch_time: 1, ioread: 2)
     
-    *   time: 1 => Total query time took 1ms. 
+    *   time: 2 => Total query time took 2ms.
     *   fetch: 975 => 975 times were fetched regarding pages. (not the number of pages, but the count of accessing pages. even if the same pages are fetched, the count is increased.).
+    *   fetch_time: 1=> Total fetch time took 1ms.
     *   ioread: disk accessed 2 times.
 
     : Total statistics regarding SELECT query. If the query is rerun, fetching count and ioread count can be shrinken because some of query result are read from buffer.
@@ -497,7 +745,7 @@ The following is an example to join 3 tables.
     
     
     Trace Statistics:
-      SELECT (time: 6, fetch: 880, ioread: 0)
+      SELECT (time: 6, fetch: 880, fetch_time: 2, ioread: 0)
         SCAN (table: olympic), (heap time: 0, fetch: 104, ioread: 0, readrows: 25, rows: 25)
           SCAN (hash temp(m), buildtime : 0, time: 0, fetch: 0, ioread: 0, readrows: 76, rows: 38)
             SCAN (index: nation.pk_nation_code), (btree time: 2, fetch: 760, ioread: 0, readkeys: 38, filteredkeys: 0, rows: 38) (lookup time: 0, rows: 38)
@@ -513,6 +761,7 @@ The following are the explanation regarding items of trace statistics.
  
 *   time: total estimated time when this query is performed(ms)
 *   fetch: total page fetching count about this query
+*   fetch_time : total fetch time when this query is performed(ms)
 *   ioread: total I/O read count about this query. disk access count when the data is read
 
 **SCAN**
@@ -564,7 +813,7 @@ The following are the explanation regarding items of trace statistics.
 ::
 
         Trace Statistics:
-          SELECT (time: 0, fetch: 16, ioread: 0)
+          SELECT (time: 0, fetch: 16, fetch_time: 0, ioread: 0)
             SCAN (table: agl_tbl), (noscan time: 0, fetch: 0, ioread: 0, readrows: 0, rows: 0, agl: pk_agl_tbl_id)
 
 **GROUPBY**    
@@ -663,7 +912,10 @@ Using hints can affect the performance of query execution. You can allow the que
     USE_NL [ (<spec_name_comma_list>) ] |
     USE_IDX [ (<spec_name_comma_list>) ] |
     USE_MERGE [ (<spec_name_comma_list>) ] |
+    USE_HASH [ (<spec_name_comma_list>) ] |
+    NO_USE_HASH [ (<spec_name_comma_list>) ] |
     ORDERED |
+    LEADING |
     USE_DESC_IDX |
     USE_SBR |
     INDEX_SS [ (<spec_name_comma_list>) ] |
@@ -672,6 +924,7 @@ Using hints can affect the performance of query execution. You can allow the que
     NO_COVERING_IDX |
     NO_MULTI_RANGE_OPT |
     NO_SORT_LIMIT |
+    NO_SUBQUERY_CACHE |
     NO_PUSH_PRED |
     NO_MERGE |
     NO_ELIMINATE_JOIN |
@@ -701,7 +954,10 @@ The following hints can be specified in **UPDATE**, **DELETE** and **SELECT** st
 
 *   **USE_NL**: Related to a table join, the query optimizer creates a nested loop join execution plan with this hint.
 *   **USE_MERGE**: Related to a table join, the query optimizer creates a sort merge join execution plan with this hint.
+*   **USE_HASH**: Related to a table join, the query optimizer creates a hash join execution plan with this hint. see :ref:`join-method_hash`.
+*   **NO_USE_HASH**: Related to a table join, The query optimizer does not create a hash join execution plan with this hint. see :ref:`join-method_hash`.
 *   **ORDERED**: Related to a table join, the query optimizer create a join execution plan with this hint, based on the order of tables specified in the **FROM** clause. The left table in the **FROM** clause becomes the outer table; the right one becomes the inner table.
+*   **LEADING**: Related to a table join, the query optimizer create a join execution plan with this hint, based on the order of tables specified in the **LEADING** hint.
 *   **USE_IDX**: Related to an index, the query optimizer creates an index join execution plan corresponding to a specified table with this hint.
 *   **USE_DESC_IDX**: This is a hint for the scan in descending index. For more information, see :ref:`index-descending-scan`.
 *   **USE_SBR**: This is a hint for the statement-based replication. It supports data replication for tables without a primary key.
@@ -716,6 +972,7 @@ The following hints can be specified in **UPDATE**, **DELETE** and **SELECT** st
 *   **NO_COVERING_IDX**: This is a hint not to use the covering index. For details, see :ref:`covering-index`.
 *   **NO_MULTI_RANGE_OPT**: This is a hint not to use the multi-key range optimization. For details, see :ref:`multi-key-range-opt`.
 *   **NO_SORT_LIMIT**: This is a hint not to use the SORT-LIMIT optimization. For more details, see :ref:`sort-limit-optimization`.
+*   **NO_SUBQUERY_CACHE**: This is a hint not to use the SUBQUERY CACHE optimization. For more details, see :ref:`correlated-subquery-cache`.
 *   **NO_PUSH_PRED**: This is a hint not to use the PREDICATE-PUSH optimization.
 *   **NO_MERGE**: This is a hint not to use the VIEW-MERGE optimization.
 *   **NO_ELIMINATE_JOIN**: This is a hint not to use join elimination optimization. For more details, see :ref:`join-elimination-optimization`.
@@ -761,6 +1018,27 @@ The following hints can be specified in **UPDATE**, **DELETE** and **SELECT** st
     If you run the above query, **USE_NL** is applied when A and B are joined; **USE_NL** is applied when C is joined, too; **USE_MERGE** is applied when D is joined.
 
     If **USE_NL** and **USE_MERGE** are specified together without <*spec_name*>, the given hint is ignored. In some cases, the query optimizer cannot create a query execution plan based on the given hint. For example, if **USE_NL** is specified for a right outer join, the query is converted to a left outer join internally, and the join order may not be guaranteed.
+
+.. note::
+
+    If you specify the **ORDERED** hint, all **LEADING** hint is ignored.
+    If you specify two or more **LEADING** hints, then only the first one is activated and all of them except the first are ignored.
+
+    .. code-block:: sql
+
+        SELECT /*+ ORDERED LEADING(b, d) */ *
+        FROM a INNER JOIN b ON a.col=b.col
+        INNER JOIN c ON b.col=c.col INNER JOIN d ON c.col=d.col;
+
+    If you run the above query, the **LEADING** hint is ignored, and tables a, b, c, and d are joined in the order of the **FROM** clause according to the **ORDERED** hint.
+
+    .. code-block:: sql
+
+        SELECT /*+ LEADING(b, d) LEADING(c, d) */ *
+        FROM a INNER JOIN b ON a.col=b.col
+        INNER JOIN c ON b.col=c.col INNER JOIN d ON c.col=d.col;
+
+    If you run the above query, the second **LEADING** hint is ignored, and join order in which tables b and d are joined first is generated.
 
 MERGE statement can have below hints.
 
@@ -1164,12 +1442,12 @@ On the above example, if you use "**USING INDEX** *idx_open_bugs*" or "**USE IND
             CREATE TABLE t (a INT, b INT);
             
             -- IS NULL cannot be used with expressions
-            CREATE INDEX idx ON t (a) WHERE (not a) IS NULL;
+            CREATE INDEX idx ON ta (a) WHERE (not ta.a<>0 ) IS NULL;
 
         ::
         
             ERROR: before ' ; '
-            Invalid filter expression (( not t.a<>0) is null ) for index.
+            Invalid filter expression (( not [dba.ta].a<>0) is null ) for index.
              
         .. code-block:: sql
 
@@ -1386,9 +1664,42 @@ The following example shows that the index is used as a covering index because c
                 1            2            3
                 4            5            6
 
+The following example shows an optimization that reduces unnecessary scans when the **SELECT** list only contains **COUNT(*)** when using a covering index.
+
+.. code-block:: sql
+
+    -- insert dummy data
+    INSERT INTO t select rownum % 8, rownum % 100, rownum % 1000 FROM dual connect by level <= 40000;
+    
+    -- csql> ;trace on
+    
+    -- count(*) optimization
+    SELECT count(*) FROM t WHERE col1 < 9;
+    
+::
+    
+    Trace Statistics:
+      SELECT (time: 1, fetch: 66, fetch_time: 0, ioread: 0)
+        SCAN (index: dba.t.i_t_col1_col2_col3), (btree time: 1, fetch: 65, ioread: 0, readkeys: 1002, filteredkeys: 0, rows: 0, covered: true, count_only: true)
+
+.. code-block:: sql
+
+    -- no count(*) optimization
+    SELECT count(col1) FROM t WHERE col1 < 9;
+    
+::
+    
+    Trace Statistics:
+      SELECT (time: 13, fetch: 180, fetch_time: 0, ioread: 0)
+        SCAN (index: dba.t.i_t_col1_col2_col3), (btree time: 8, fetch: 179, ioread: 0, readkeys: 1002, filteredkeys: 0, rows: 40002, covered: true)
+
+.. note::
+
+    **COUNT(*)** optimization for a single table when using a covering index is supported from CUBRID 11.2, and **COUNT(*)** optimization for join tables is supported from CUBRID 11.3.
+
 .. warning::
 
-    If the covering index is applied when you get the values from the **VARCHAR** type column, the empty strings that follow will be truncated. If the covering index is applied to the execution of query optimization, the resulting query value will be retrieved. This is because the value will be stored in the index with the empty string being truncated.
+    When a covering index is applied to retrieve values from a **VARCHAR** type column, any trailing empty strings will be truncated. This occurs because the empty string is stored in the index with the trailing spaces removed, affecting the query results when the index is used for query optimization.
 
     If you don't want this, use the **NO_COVERING_IDX** hint, which does not use the covering index function. If you use the hint, you can get the result value from the data area rather than from the index area.
 
@@ -2440,17 +2751,65 @@ Optimization Using Rewrite
 
 .. _join-elimination-optimization:
 
-Join Elimination Optimization
------------------------------
+Join transforming Optimization
+------------------------------
 
-The join elimination optimization is a method to reduce join operations and improve the query performance by eliminating the joins with the tables that do not affect the query results.
+The join transforming optimization is a method to reduce join operations and improve the query performance by transforming the joins with the tables that do not affect the query results.
 
-In the join elimination optimization, there are two operations:
+In the join transforming optimization, there are three operations:
 
+    #. Transforming **OUTER JOIN** to **INNER JOIN**
     #. Eliminating **INNER JOIN**
     #. Eliminating **LEFT OUTER JOIN**
 
 To disable the join elimination optimization, use the **NO_ELIMINATE_JOIN** hint.
+
+.. _transform-outer-inner:
+
+Transforming **OUTER JOIN** to **INNER JOIN**
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**OUTER JOIN** has a predefined join order with the leading table and trailing table, which restricts join order optimization. For performance improvement, **CUBRID** converts **OUTER JOIN** to **INNER JOIN** if there is a predicate which is not nullable on the trailing table. A nullable predicate is excluded from this transformation and satisfy the following conditions:
+
+    #. Predicates written in the **ON** clause.
+    #. Using **NULL** transformation functions. This includes **COALESCE (), NVL (), NVL2 (), DECODE (), IF (), IFNULL (), CONCAT_WS ()**.
+    #. **IS NULL ,CASE** statements are also not targets for **Predicate Push**.
+
+The following example shows an optimization that transform **OUTER JOIN**\ to **INNER JOIN**\.
+
+.. code-block:: sql
+
+    --create table
+    CREATE TABLE t1 (col1 int, col2 int);
+    INSERT INTO t1 values (1,1),(2,2),(3,2);
+     
+    -- csql> ;plan simple
+    SELECT /*+ recompile */ *
+    FROM t1 a LEFT OUTER JOIN t1 b on a.col1 = b.col2
+    WHERE b.col1 = 2;
+    
+::
+    
+    Query Plan:
+      NESTED LOOPS (inner join)
+        TABLE SCAN (a)
+        TABLE SCAN (b)
+
+The following example demonstrates that the transformation from **OUTER JOIN** to **INNER JOIN** is not possible due to the nullable predicate.
+
+.. code-block:: sql
+
+    -- csql> ;plan simple
+    SELECT /*+ recompile */ *
+    FROM t1 a LEFT OUTER JOIN t1 b on a.col1 = b.col2
+    WHERE nvl(b.col1,2) = 2;
+    
+::
+    
+    Query Plan:
+      NESTED LOOPS (left outer join)
+        TABLE SCAN (a)
+        TABLE SCAN (b)
 
 .. _eliminate-inner-join:
 
@@ -3832,7 +4191,7 @@ The join with the *right_tbl* table was eliminated.
 .. _view_merge:
 
 View Merging Optimization
-=========================
+---------------------------
 
 **View Merging** is an optimization for reducing overhead that occur during the processing of view or inline view. 
 When a query includes a view, there is an overhead of creating a temporary table for that view. 
@@ -3962,7 +4321,25 @@ The following is an example using **ROWNUM, LIMIT** or **GROUPBY_NUM(), INST_NUM
         FROM (SELECT gender, rownum FROM athlete WHERE rownum < 15) a
         WHERE gender = 'M';
 
-When using **ROWNUM, LIMIT** or **GROUPBY_NUM(), INST_NUM(), ORDERBY_NUM()** in views as above, **View Merging** optimization cannot be performed.
+When using **ROWNUM, LIMIT** or **GROUPBY_NUM(), INST_NUM(), ORDERBY_NUM()** in views as above, **View Merging** optimization cannot be performed. However, when **ROWNUM** is used for partial range processing, **View Merging** is performed even if **ROWNUM** exists. This is the case when the following two conditions are satisfied.
+
+    #. The **WHERE** clause includes only predicates involving **ROWNUM**
+    #. There is only one subquery in the **FROM** clause
+
+.. code-block:: sql
+
+        --csql> ;plan detail
+        SELECT *
+        FROM (SELECT name, rownum rn
+                FROM (SELECT name FROM athlete WHERE nation_code = 'KOR') a
+               WHERE rownum < 15) b
+        WHERE rn > 5;
+
+::
+
+    Query stmt:
+     
+    select b.[name], (rownum) from athlete b where ((rownum)> ?:0  and (rownum)< ?:1 ) and (b.nation_code= ?:2 )
 
 The following is an example using **Correlated Subquery**.
 
@@ -3984,6 +4361,26 @@ The following is an example where a view includes **RANDOM(), DRANDOM(), SYS_GUI
         WHERE a.code = b.athlete_code;
 
 When using **RANDOM(), DRANDOM(), SYS_GUID()** in views as above, **View Merging** optimization cannot be performed.
+
+If **View Merging** optimization cannot be performed, **CUBRID** optimizes the **SELECT-LIST** item of the subquery. The following example shows how the **SELECT-LIST** of the subquery is optimized.
+
+.. code-block:: sql
+
+    --csql> ;plan detail
+    SELECT /*+ recompile */ aa.host_year, aa.rn
+    FROM (select host_year,
+                (select name from event where code = a.event_code) event_name,
+                (select name from athlete where code = a.athlete_code) athlete_name,
+                rownum rn
+         from game a
+         where medal = 'G') aa
+    WHERE host_year = '2004';
+
+::
+
+    Query stmt:
+     
+    select aa.host_year, aa.rn from (select a.host_year, (rownum) as [rn] from game a where a.medal= ?:1 ) aa (host_year, rn) where aa.host_year= ?:0
 
 .. _pred-push:
 
@@ -4013,6 +4410,29 @@ However, if the query is rewritten as follows by using **Predicate Push**, it ca
         SELECT a.name, r.score 
         FROM (SELECT name, nation_code, code, count(*) cnt FROM athlete WHERE nation_code = 'KOR' GROUP BY name, nation_code ) a, record r
         WHERE a.code = r.athlete_code;
+
+The following example shows how **Predicate Push** works in a situation where there are multiple subqueries.
+
+.. code-block:: sql
+
+    --csql> ;plan detail
+    SELECT a.host_year
+    FROM (select distinct host_year, event_code, athlete_code from game where host_year = 2004) a,
+         (select distinct host_year, event_code, athlete_code from game where event_code = 20021) b
+    WHERE a.host_year = b.host_year
+    AND a.event_code = b.event_code
+    AND a.athlete_code = b.athlete_code;
+
+::
+
+    Query stmt:
+     
+    select a.host_year
+     from (select distinct game.host_year, game.event_code, game.athlete_code from game game where game.host_year= ?:0  and game.event_code=20021) a (host_year, event_code, athlete_code),
+          (select distinct game.host_year, game.event_code, game.athlete_code from game game where game.event_code= ?:1  and game.host_year=2004) b (host_year, event_code, athlete_code)
+    where a.athlete_code=b.athlete_code and a.host_year=b.host_year and a.event_code=b.event_code
+
+The predicates **game.event_code=20021** and **game.host_year=2004** are added to each subquery according to the join condition of the main query.
 
 In the following cases, **Predicate Push** is not performed:
 
@@ -4083,6 +4503,70 @@ The following is an example that performs an **OUTER JOIN** where either the pre
         WHERE NVL(r.score, '0') = '0';
 
 When performing an **OUTER JOIN** and either the predicate to be pushed or the target for **Predicate Push** within the view uses a **NULL** transformation function, it's not a target for **Predicate Push**.
+
+.. _subquery_unnest:
+
+Subquery unnest
+-------------------------
+**Subquery unnest** improves performance by converting the filtering method, which executes the subquery in the **WHERE** clause repeatedly, into a join method that guarantees the same result. Subqueries in the **WHERE** clause can have different characteristics depending on the operator. Subqueries with operators like **IN** or **EXISTS**, which can return multiple rows, are the main targets for optimization. **CUBRID** partially supports this optimization only for the **IN** operator.
+
+The following example shows converting an IN operator into a join query.
+
+.. code-block:: sql
+
+    --csql> set optimization level 513;
+    SELECT game_date
+      FROM game
+     WHERE (host_year,event_code,athlete_code) IN (select host_year,event_code,athlete_code
+                                                     from game
+                                                    where nation_code = 'KOR' and medal = 'G');
+
+::
+
+    Query plan:
+     
+    idx-join (inner join)
+        outer: sscan
+                   class: av1861 node[1]
+                   cost:  1 card 25
+        inner: iscan
+                   class: game node[0]
+                   index: pk_game_host_year_event_code_athlete_code term[0] AND term[1] AND term[2]
+                   cost:  3 card 8653
+        cost:  17 card 1
+     
+    Query stmt:
+     
+    select game.game_date from game game, (select distinct game.host_year, game.event_code, game.athlete_code from game game where game.medal= ?:0  and game.nation_code= ?:1 ) av1861 (av_1, av_2, av_3) where game.host_year=av1861.av_1 and game.event_code=av1861.av_2 and game.athlete_code=av1861.av_3
+
+.. note::
+
+    Starting from CUBRID 11.0, subqueries that retrieve multiple columns are allowed in the arguments of the **IN** operator.
+
+.. _predicate_transitivity:
+
+Transitive predicate
+-------------------------
+**Transitive predicate** improves query performance by adding conditional clauses that can be logically constructed.
+
+The following example shows that the **b.col1 = 3** predicate is added with **Transitive predicate** optimization.
+
+.. code-block:: sql
+
+    CREATE TABLE t1 (col1 int, col2 int, col3 int);
+    CREATE TABLE t2 (col1 int, col2 int, col3 int);
+     
+    --csql> ;plan detail
+    SELECT /*+ recompile */ *
+    FROM t1 a, t2 b
+    WHERE a.col1 = b.col1
+    AND a.col1 = 3;
+
+::
+
+    Query stmt:
+     
+    select a.col1, a.col2, a.col3, b.col1, b.col2, b.col3 from t1 a, t2 b where b.col1= ?:0  and a.col1= ?:1  and a.col1=b.col1
 
 .. _query-cache:
 
@@ -4159,4 +4643,218 @@ The user can check the query to be cached or not by putting the session command 
       deletion_marker = false
     }
 
+The cached query is shown as **query_string** in the middle of the result screen. **n_entries** and **n_pages** represent the number of cached queries and the number of pages in the cached results, respectively. **n_entries** is limited by the value of the configuration parameter **max_QUERY_CACHE_entries**, and **n_pages** is limited by the value of the configuration parameter **QUERY_CACHE_size_in_pages**. If **n_entries** or **n_pages** overflow, some candidates among the cache entries are selected and uncached. The number of candidates is approximately 20% of the **max_QUERY_CACHE_entries** value and the **QUERY_CACHE_size_in_pages** value.
+
+Since version 11.4, subqueries can also be cached, and the subqueries that can be cached are as follows.
+
+1) CTE query
+When the QUERY_CACHE hint is specified in a non-recursive query included in the WITH clause
+
+.. code-block:: sql
+
+        WITH
+         of_drones AS (SELECT /*+ QUERY_CACHE */ item, 'drones' FROM products WHERE parent_id = 1),
+         of_cars AS (SELECT /*+ QUERY_CACHE */ item, 'cars' FROM products WHERE parent_id = 5)
+        SELECT * FROM of_drones UNION ALL SELECT * FROM of_cars ORDER BY 1;
+
+When the QUERY_CACHE hint is specified in a recursive query included in the WITH clause and no other CTE is referenced.
+
+.. code-block:: sql
+
+        WITH
+         RECURSIVE cars (id, parent_id, item, price) AS (
+                            SELECT /*+ QUERY_CACHE */ id, parent_id, item, price
+                                FROM products WHERE item LIKE 'Car%'
+                            UNION ALL
+                            SELECT /*+ QUERY_CACHE */ p.id, p.parent_id, p.item, p.price
+                                FROM products p
+                            INNER JOIN cars rec_cars ON p.parent_id = rec_cars.id)
+        SELECT item, price FROM cars ORDER BY 1;
+
+In the UNION query above, the first query is cached, but the second query is not cached because it references another table.
+
+2) When the QUERY_CACHE hint is specified in a subquery that does not refer to another table
+
+.. code-block:: sql
+
+        SELECT h.host_year, (SELECT /*+ QUERY_CACHE */ host_nation FROM olympic o WHERE o.host_year > 1994 limit 1) AS host_nation, h.event_code, h.score, h.unit
+        FROM history h;
+
+        SELECT name, capital, list(SELECT /*+ QUERY_CACHE */ host_city FROM olympic WHERE host_nation like 'K%') AS host_cities
+        FROM nation;
+
+However, if another table is referenced within a subquery as shown below, the query is not cached even if the QUERY_CACHE hint is specified.
+
+.. code-block:: sql
+
+        SELECT h.host_year, (SELECT /*+ QUERY_CACHE */ host_nation FROM olympic o WHERE o.host_year=h.host_year) AS host_nation, h.event_code, h.score, h.unit
+        FROM history h;
+
+        SELECT name, capital, list(SELECT /*+ QUERY_CACHE */ host_city FROM olympic WHERE host_nation = name) AS host_cities
+        FROM nation;
+
 The cached query is shown as **query_string** in the middle of the result screen. Each of the **n_entries** and **n_pages** represents the number of cached queries and the number of pages in the cached results. The **n_entries** is limited to the value of configuration parameter **max_query_cache_entries** and the **n_pages** is limited to the value of **query_cache_size_in_pages**. If the **n_entries** is overflown or the **n_pages** is overflown, some victims among the cache entries are selected and they are uncached. The number of victims is about 20% of **max_query_cache_entries** value and of the **query_cache_size_in_pages** value.
+
+.. _correlated-subquery-cache:
+
+SUBQUERY CACHE (correlated)
+------------------------------------
+
+Subquery cache optimization can enhance the performance of queries including correlated subqueries by caching each subquery's results in private memory space per subquery. 
+This optimization is enabled by default. 
+To disable it during query execution, use the NO_SUBQUERY_CACHE hint on the target subquery.
+
+When the correlated subquery is in the SELECT clause, subquery cache is enabled. 
+The processing mechanism of the cache is as follows:
+If the column values ​​of the search conditions of the re-executed correlated subquery are the same, the cached results are used instead of executing the subquery.
+If the cached value cannot be found in the subquery cache, after executing the subquery, the retrieved column value and results are stored in the subquery cache.
+
+When executing a query using :ref:`query profiling <query-profiling>`\, the profile results for the subquery cache are displayed as part of the profile for correlated subqueries.
+
+The following example displays subquery cache profiling information, when performing a correlated subquery.
+
+::
+
+    csql> SELECT /*+ RECOMPILE NO_MERGE */
+            (SELECT t1_pk FROM t1 b WHERE b.t1_pk = a.c3)
+          FROM t1 a
+          WHERE a.c2 >= 1;
+
+    Trace Statistics:
+      SELECT (time: 108, fetch: 103639, fetch_time: 13, ioread: 0)
+        SCAN (table: dba.t1), (heap time: 70, fetch: 100384, ioread: 0, readrows: 100000, rows: 99000)
+        SUBQUERY (correlated)
+          SELECT (time: 4, fetch: 2970, fetch_time: 0, ioread: 0)
+            SCAN (index: dba.t1.pk_t1), (btree time: 2, fetch: 1980, ioread: 0, readkeys: 990, filteredkeys: 0, rows: 990, covered: true)
+            SUBQUERY_CACHE (hit: 98010, miss: 990, size: 269384, status: enabled)
+ 
+Descriptions for each item are as follows:
+
+* **hit**: The number of retrieves from the cache without executing the query.
+* **miss**: The number of times the result of a query execution is stored into the cache (the number of times a query result is not found in the cache).
+* **size**: The memory size used by the subquery cache.
+* **status**: The activation status of the subquery cache at the end of executing the query.
+
+During query execution, if the **size** of the subquery cache exceeds the set value, or the **size** does not exceed the set value but the **miss**/**hit** ratio exceeds 9 (the miss rate is determined to be high), the subquery cache is disabled, and the **status** of the profiling information is marked as disabled.
+
+The following example contains queries that count the results of a correlated subquery that is executed repeatedly to check for performance improvements depending on whether subquery caching is used.
+The following query creates data to perform the example queries.
+
+::
+    
+    # Prepare data
+    csql> DROP TABLE IF EXISTS t1;
+    
+    csql> CREATE TABLE t1 AS
+            SELECT
+                    ROWNUM AS t1_pk,
+                    MOD(ROWNUM, 10) AS c1,
+                    MOD(ROWNUM, 100) AS c2,
+                    MOD(ROWNUM, 1000) AS c3
+            FROM 
+                    db_class a, db_class b, db_class c, db_class d, db_class e, db_class f
+            LIMIT 100000;
+    
+    csql> ALTER TABLE t1 ADD CONSTRAINT PRIMARY KEY pk_t1 (t1_pk);
+
+    csql> CREATE TABLE t2 AS
+            SELECT
+                    ROWNUM as c1,
+                    1 as c2,
+                    TO_CHAR(ROWNUM * 1000, '0999') as code
+            FROM 
+                    db_class a, db_class b
+            LIMIT 10;
+    
+    csql> update statistics on t1 with fullscan;
+    
+    csql> ;trace on  
+
+Query #1 is executed using subquery cache optimization, while Query #2 is executed without subquery cache optimization by using the NO_SUBQUERY_CACHE hint.
+A comparison of the results from the two queries reveals that subquery cache optimization improves response performance.
+
++------------------------------------------------------------------------+------------------------------------------------------------------------------------------------+
+| **Query #1**                                                           | **Query #2**                                                                                   |
++========================================================================+================================================================================================+
+| ::                                                                     | ::                                                                                             |
+|                                                                        |                                                                                                |
+|     csql> SELECT COUNT(*)                                              |     csql> SELECT COUNT(*)                                                                      |
+|            FROM (                                                      |            FROM (                                                                              |
+|                   SELECT /*+ RECOMPILE NO_MERGE */                     |                   SELECT /*+ RECOMPILE NO_MERGE */                                             |
+|                          (SELECT t1_pk FROM t1 b WHERE b.t1_pk = a.c3) |                         (SELECT /*+ NO_SUBQUERY_CACHE */ t1_pk FROM t1 b WHERE b.t1_pk = a.c3) | 
+|                     FROM t1 a                                          |                     FROM t1 a                                                                  |
+|                    WHERE a.c2 >= 1                                     |                    WHERE a.c2 >= 1                                                             |
+|                 );                                                     |                 );                                                                             |
+|                                                                        |                                                                                                |
+|     === <Result of SELECT Command in Line 2> ===                       |     === <Result of SELECT Command in Line 2> ===                                               |
+|                                                                        |                                                                                                |
+|                  count(*)                                              |                  count(*)                                                                      |
+|     ======================                                             |     ======================                                                                     |
+|                     99000                                              |                     99000                                                                      |
+|                                                                        |                                                                                                |
+|     1 row selected. (0.128251 sec) Committed. (0.000010 sec)           |     1 row selected. (0.626199 sec) Committed. (0.000011 sec)                                   |
+|                                                                        |                                                                                                |
+|     1 command(s) successfully processed.                               |     1 command(s) successfully processed.                                                       |
++------------------------------------------------------------------------+------------------------------------------------------------------------------------------------+
+
+Subquery cache optimization does not work in the following scenarios:
+
+* When the correlated subquery contains another correlated subquery. (However, subquery cache optimization is performed for the innermost correlated subquery that does not contain other correlated subqueries.)
+* When the subquery is not scalar subquery.
+* When the subquery includes a CONNECT BY clause.
+* When the subquery includes OID-related features.
+* When the subquery includes the **NO_SUBQUERY_CACHE** hint.
+* When the subquery cache memory size exceeds the configured size (default: 2MB).
+* When the subquery contains functions that produce different results with each execution, such as random() or sys_guid().
+
+The following example shows that subquery caching is enabled only for the innermost correlated subquery and disabled for the outer correlated subquery.
+
+::
+
+    csql> SELECT /*+ recompile */ 
+            (
+                SELECT 
+                    (
+                        SELECT c.code
+                        FROM t2 c
+                        WHERE c.c1 = b.c1
+                    ) 
+                FROM t1 b 
+                WHERE b.t1_pk = a.c1
+            ) s
+            FROM t1 a
+            WHERE a.c3 = 1;
+    
+    Trace Statistics:
+        SELECT (time: 56, fetch: 100785, fetch_time: 10, ioread: 0)
+            SCAN (table: dba.t1), (heap time: 55, fetch: 100384, ioread: 0, readrows: 100000, rows: 100)
+            SUBQUERY (correlated)
+            SELECT (time: 0, fetch: 401, fetch_time: 0, ioread: 0)
+                SCAN (index: dba.t1.pk_t1), (btree time: 0, fetch: 300, ioread: 0, readkeys: 100, filteredkeys: 0, rows: 100) (lookup time: 0, rows: 100)
+                SUBQUERY (correlated)
+                SELECT (time: 0, fetch: 1, fetch_time: 0, ioread: 0)
+                    SCAN (table: dba.t2), (heap time: 0, fetch: 1, ioread: 0, readrows: 10, rows: 1)
+                    SUBQUERY_CACHE (hit: 99, miss: 1, size: 150704, status: enabled)
+
+The following example shows that subquery cache optimization is disabled when the correlated subquery includes random() functions, which yield different results with each execution.
+
+::
+
+    csql> WITH cte_1 AS 
+            (SELECT
+                DISTINCT (SELECT random(1) FROM t2 b WHERE b.c1 = a.c1 AND b.c2 = 1) v
+                FROM t1 a
+                WHERE a.c2 = 1
+            ) SELECT count(*) FROM cte_1;
+    
+    Trace Statistics:
+        SELECT (time: 65, fetch: 101384, fetch_time: 9, ioread: 0)
+            SCAN (temp time: 0, fetch: 0, ioread: 0, readrows: 1000, rows: 1000)
+            SUBQUERY (uncorrelated)
+            CTE (non_recursive_part)
+                SELECT (time: 65, fetch: 101384, fetch_time: 9, ioread: 0)
+                SCAN (table: dba.t1), (heap time: 59, fetch: 100384, ioread: 0, readrows: 100000, rows: 1000)
+                ORDERBY (time: 0, sort: true, page: 0, ioread: 0)
+                SUBQUERY (correlated)
+                    SELECT (time: 4, fetch: 1000, fetch_time: 0, ioread: 0)
+                    SCAN (table: dba.t2), (heap time: 3, fetch: 1000, ioread: 0, readrows: 10000, rows: 1000)
